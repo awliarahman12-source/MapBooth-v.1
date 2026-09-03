@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import type { WindowId, WindowState, ThemeMode } from '@/types';
 import { createClient } from '@supabase/supabase-js';
 import MenuBar from '@/components/MenuBar';
 import Dock from '@/components/Dock';
 import Window from '@/components/Window';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import FinderContent from '@/components/FinderContent';
 import SettingsContent, { builtInWallpapers } from '@/components/SettingsContent';
 import PhotosContent from '@/components/PhotosContent';
@@ -13,9 +14,12 @@ import AdminDashboardContent from '@/components/AdminDashboardContent';
 import NewsContent from '@/components/NewsContent';
 import { getNewsSettings, fetchNewsSettings } from '@/newsStore';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
 const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  SUPABASE_URL || 'https://placeholder.supabase.co',
+  SUPABASE_ANON_KEY || 'placeholder-anon-key',
 );
 
 interface CustomWallpaper {
@@ -149,10 +153,20 @@ export default function App() {
       await fetchNewsSettings();
       const settings = getNewsSettings();
       if (!settings.enabled || !settings.showOnStartup) return;
-      if (settings.oncePerSession && sessionStorage.getItem('newsAutoOpened') === '1') return;
+      if (settings.oncePerSession) {
+        try {
+          if (sessionStorage.getItem('newsAutoOpened') === '1') return;
+        } catch {
+          // sessionStorage not available
+        }
+      }
       if (newsAutoOpened.current) return;
       newsAutoOpened.current = true;
-      sessionStorage.setItem('newsAutoOpened', '1');
+      try {
+        sessionStorage.setItem('newsAutoOpened', '1');
+      } catch {
+        // sessionStorage not available
+      }
       const delay = settings.autoOpenDelay || 0;
       setTimeout(() => {
         focusWindow('newsWindow');
@@ -205,16 +219,18 @@ export default function App() {
   );
 
   const renderWindowContent = (id: WindowId) => {
+    let content: ReactNode = null;
     switch (id) {
-      case 'finderWindow': return <FinderContent />;
-      case 'settingsWindow': return <SettingsContent theme={theme} onThemeChange={handleThemeChange} customWallpapers={customWallpapers} activeWallpaper={activeWallpaper} onAddWallpaper={handleAddWallpaper} onWallpaperChange={handleWallpaperChange} />;
-      case 'photosWindow': return <PhotosContent theme={theme} />;
-      case 'photoboothWindow': return <PhotoBoothContent theme={theme} />;
-      case 'adminLoginWindow': return <AdminLoginContent onSuccess={handleAdminLoginSuccess} />;
-      case 'adminDashboardWindow': return <AdminDashboardContent onCloseLogin={() => closeWindow('adminLoginWindow')} customWallpapers={customWallpapers} activeWallpaper={activeWallpaper} theme={theme} onAddWallpaper={handleAddWallpaper} onWallpaperChange={handleWallpaperChange} onThemeChange={handleThemeChange} />;
-      case 'newsWindow': return <NewsContent theme={theme} allowClose={getNewsSettings().allowClose} defaultNewsId={getNewsSettings().defaultNewsId} animation={getNewsSettings().animation} onClose={() => closeWindow('newsWindow')} />;
-      default: return null;
+      case 'finderWindow': content = <FinderContent />; break;
+      case 'settingsWindow': content = <SettingsContent theme={theme} onThemeChange={handleThemeChange} customWallpapers={customWallpapers} activeWallpaper={activeWallpaper} onAddWallpaper={handleAddWallpaper} onWallpaperChange={handleWallpaperChange} />; break;
+      case 'photosWindow': content = <PhotosContent theme={theme} />; break;
+      case 'photoboothWindow': content = <PhotoBoothContent theme={theme} />; break;
+      case 'adminLoginWindow': content = <AdminLoginContent onSuccess={handleAdminLoginSuccess} />; break;
+      case 'adminDashboardWindow': content = <AdminDashboardContent onCloseLogin={() => closeWindow('adminLoginWindow')} customWallpapers={customWallpapers} activeWallpaper={activeWallpaper} theme={theme} onAddWallpaper={handleAddWallpaper} onWallpaperChange={handleWallpaperChange} onThemeChange={handleThemeChange} />; break;
+      case 'newsWindow': content = <NewsContent theme={theme} allowClose={getNewsSettings().allowClose} defaultNewsId={getNewsSettings().defaultNewsId} animation={getNewsSettings().animation} onClose={() => closeWindow('newsWindow')} />; break;
+      default: content = null;
     }
+    return <ErrorBoundary>{content}</ErrorBoundary>;
   };
 
   const getWindowBodyStyle = (id: WindowId): React.CSSProperties | undefined => {
