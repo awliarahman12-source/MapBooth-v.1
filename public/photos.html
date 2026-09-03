@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photos macOS - Animated UI & Quick Look Video</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background-color: #ffffff;
+      color: #1d1d1f;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .icon {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      display: inline-block;
+      vertical-align: middle;
+      transition: stroke 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .sidebar {
+      width: 230px;
+      background-color: rgba(246, 246, 246, 0.85);
+      border-right: 1px solid rgba(0, 0, 0, 0.08);
+      display: flex;
+      flex-direction: column;
+      padding: 10px 12px;
+      overflow-y: auto;
+      backdrop-filter: blur(20px);
+    }
+
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      height: 38px;
+      margin-bottom: 12px;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 7px;
+      margin-right: 15px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 0.5px solid rgba(0,0,0,0.15);
+      transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .dot:hover { transform: scale(1.15); }
+    .red { background-color: #ff5f57; }
+    .yellow { background-color: #febc2e; }
+    .green { background-color: #28c840; }
+
+    .sidebar-title { font-size: 13px; font-weight: 700; }
+
+    .menu-group { margin-bottom: 16px; }
+
+    .menu-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-right: 5px;
+      margin-bottom: 4px;
+    }
+
+    .menu-group-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #8e8e93;
+      padding-left: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .btn-add-album {
+      background: none;
+      border: none;
+      color: #007aff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: background-color 0.15s ease, transform 0.15s ease;
+    }
+    .btn-add-album:hover { background-color: rgba(0,0,0,0.06); transform: scale(1.05); }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 10px;
+      font-size: 13px;
+      color: #1d1d1f;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s ease, color 0.15s ease;
+    }
+
+    .menu-item:hover {
+      background-color: rgba(0, 0, 0, 0.05);
+      transform: translateX(2px);
+    }
+    .menu-item.active {
+      background-color: #007aff;
+      color: #ffffff;
+      font-weight: 500;
+    }
+    .menu-item.active .icon { stroke: #ffffff !important; }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background-color: #ffffff;
+      position: relative;
+    }
+
+    .toolbar {
+      height: 52px;
+      background-color: rgba(251, 251, 253, 0.85);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 10;
+      backdrop-filter: blur(20px);
+    }
+
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+    }
+
+    .toolbar-right { justify-content: flex-end; }
+
+    .toolbar-center {
+      display: flex;
+      background-color: rgba(118, 118, 128, 0.12);
+      padding: 2px;
+      border-radius: 8px;
+      position: relative;
+    }
+
+    .segment-btn {
+      background: none;
+      border: none;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #1d1d1f;
+      border-radius: 6px;
+      cursor: pointer;
+      z-index: 2;
+      transition: color 0.2s ease, font-weight 0.2s ease;
+    }
+
+    .segment-btn.active {
+      background-color: #ffffff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 0.5px 1px rgba(0,0,0,0.08);
+      font-weight: 600;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      background-color: rgba(239, 239, 240, 0.8);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 4px 8px;
+      gap: 6px;
+      width: 160px;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .search-box:focus-within {
+      background-color: #ffffff;
+      border-color: #007aff;
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
+      width: 210px;
+    }
+
+    .search-input {
+      border: none;
+      outline: none;
+      font-size: 12px;
+      width: 100%;
+      background: transparent;
+    }
+
+    .btn-import {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background-color: #ffffff;
+      border: 1px solid #d1d1d6;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #007aff;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn-import:hover {
+      background-color: #f0f0f5;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .btn-import:active { transform: translateY(0); }
+
+    .grid-container {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      outline: none;
+    }
+
+    .view-header {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #8e8e93;
+      transition: opacity 0.2s ease;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+      transition: grid-template-columns 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .photo-card {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      padding: 6px;
+      border: 2.5px solid transparent;
+      background-size: cover;
+      background-position: center;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  box-shadow 0.2s ease,
+                  border-color 0.2s ease,
+                  opacity 0.2s ease;
+      animation: fadeInGrid 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeInGrid {
+      from { opacity: 0; transform: scale(0.92) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .photo-card:hover {
+      transform: scale(1.04);
+      box-shadow: 0 8px 18px rgba(0,0,0,0.15);
+      z-index: 2;
+    }
+
+    .photo-card.selected {
+      border-color: #007aff;
+      box-shadow: 0 0 0 2px rgba(0,122,255,0.4), 0 8px 20px rgba(0,122,255,0.15);
+    }
+
+    .photo-card.selected::before {
+      content: "✓";
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      background: #007aff;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: bold;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 4;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      animation: popBadge 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes popBadge {
+      from { transform: scale(0); }
+      to { transform: scale(1); }
+    }
+
+    .photo-card video {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: 1;
+    }
+
+    .video-badge {
+      position: absolute;
+      top: 6px; left: 6px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #ffffff;
+      border-radius: 4px;
+      padding: 2px 5px;
+      font-size: 9px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      z-index: 3;
+      backdrop-filter: blur(8px);
+    }
+
+    .photo-card.selected .video-badge { left: 28px; }
+
+    .fav-btn {
+      position: absolute;
+      top: 6px; right: 6px;
+      background: rgba(0, 0, 0, 0.4);
+      border: none;
+      border-radius: 50%;
+      width: 24px; height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #ffffff;
+      backdrop-filter: blur(8px);
+      z-index: 3;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
+    }
+
+    .fav-btn:hover { transform: scale(1.15); background: rgba(0, 0, 0, 0.6); }
+    .fav-btn.is-fav { color: #ff2d55; fill: #ff2d55; }
+
+    .photo-card-label {
+      font-size: 10px;
+      color: #ffffff;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px);
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+      z-index: 3;
+    }
+
+    .bottom-bar {
+      position: absolute;
+      bottom: 0; right: 0;
+      width: 220px; height: 32px;
+      background-color: rgba(251, 251, 253, 0.85);
+      border-top-left-radius: 8px;
+      border-left: 1px solid rgba(0,0,0,0.08);
+      border-top: 1px solid rgba(0,0,0,0.08);
+      backdrop-filter: blur(15px);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+    }
+
+    .slider {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 3px;
+      background: #d1d1d6;
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; height: 12px;
+      background: #ffffff;
+      border: 0.5px solid #c1c1c1;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      transition: transform 0.15s ease;
+    }
+    .slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+    .context-menu {
+      position: fixed;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(25px);
+      border: 1px solid rgba(0,0,0,0.12);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+      border-radius: 8px;
+      width: 200px;
+      padding: 4px;
+      display: none;
+      z-index: 2000;
+      opacity: 0;
+      transform: scale(0.95);
+      transition: opacity 0.12s ease, transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .context-menu.show {
+      display: block;
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .context-menu-item {
+      padding: 5px 10px;
+      font-size: 12px;
+      color: #1d1d1f;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background-color 0.1s ease, color 0.1s ease;
+    }
+
+    .context-menu-item:hover { background-color: #007aff; color: #ffffff; }
+    .context-divider { height: 1px; background-color: rgba(0,0,0,0.08); margin: 4px 0; }
+
+    .preview-modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(25px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .preview-modal.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .preview-container {
+      background: rgba(28, 28, 30, 0.85);
+      backdrop-filter: blur(30px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 30px 70px rgba(0,0,0,0.6);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 900px;
+      height: 80%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      color: #ffffff;
+      position: relative;
+      transform: scale(0.88) translateY(10px);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .preview-modal.active .preview-container {
+      transform: scale(1) translateY(0);
+    }
+
+    .preview-header {
+      height: 38px;
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+    }
+
+    .mac-window-controls {
+      display: flex;
+      gap: 7px;
+    }
+
+    .mac-btn {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 0.5px solid rgba(0,0,0,0.2);
+      cursor: pointer;
+    }
+    .mac-btn.close { background-color: #ff5f56; border-color: #e0443e; }
+    .mac-btn.minimize { background-color: #ffbd2e; border-color: #dea123; }
+    .mac-btn.maximize { background-color: #27c93f; border-color: #1aab29; }
+
+    .preview-title { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.85); }
+    .preview-actions { display: flex; gap: 8px; }
+
+    .btn-preview-action {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .btn-preview-action:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: translateY(-1px);
+    }
+    .btn-preview-action:active { transform: translateY(0); }
+    .btn-preview-action.active { background: #007aff; border-color: #007aff; }
+
+    .edit-toolbar {
+      background: rgba(0, 0, 0, 0.6);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 0 16px;
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-wrap: wrap;
+      transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                  padding 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.25s ease;
+    }
+
+    .edit-toolbar.open {
+      max-height: 60px;
+      padding: 10px 16px;
+      opacity: 1;
+    }
+
+    .edit-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .edit-label { color: #a1a1a6; font-weight: 500; }
+
+    .edit-input-range {
+      width: 80px;
+      accent-color: #007aff;
+    }
+
+    .edit-select {
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      outline: none;
+      font-size: 11px;
+      transition: background 0.15s ease;
+    }
+    .edit-select:hover { background: rgba(255, 255, 255, 0.25); }
+    .edit-select option { background: #1c1c1e; color: white; }
+
+    .preview-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .media-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preview-body img, .preview-body video {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+      transform-origin: center center;
+    }
+
+    .mac-video-controls {
+      height: 44px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(20, 20, 20, 0.6);
+      backdrop-filter: blur(15px);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .mac-tool-btn {
+      background: transparent;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      padding: 4px;
+      border-radius: 4px;
+      transition: background 0.15s ease;
+    }
+    .mac-tool-btn:hover { background: rgba(255, 255, 255, 0.15); }
+
+    .mac-seekbar {
+      flex-grow: 1;
+      accent-color: #0a84ff;
+      height: 4px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.2);
+      border-radius: 2px;
+    }
+
+    .mac-time {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Mono", sans-serif;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .crop-overlay {
+      position: absolute;
+      border: 2px dashed #007aff;
+      background: rgba(0, 122, 255, 0.18);
+      display: none;
+      cursor: move;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
+      z-index: 100;
+      transition: border-color 0.15s ease;
+    }
+
+    .preview-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%) scale(0.9);
+      background: rgba(0, 0, 0, 0.4);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 10;
+      opacity: 0.7;
+    }
+
+    .preview-nav:hover {
+      background: rgba(0, 0, 0, 0.75);
+      transform: translateY(-50%) scale(1.1);
+      opacity: 1;
+    }
+    .prev-btn { left: 16px; }
+    .next-btn { right: 16px; }
+
+    .preview-info {
+      height: 32px;
+      background: rgba(0, 0, 0, 0.3);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 11px;
+      color: #a1a1a6;
+    }
+
+    .album-modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(15px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3500;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .album-modal.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .album-modal-content {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(30px) saturate(180%);
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      border-radius: 10px;
+      width: 320px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+      overflow: hidden;
+      transform: scale(0.92);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .album-modal.active .album-modal-content {
+      transform: scale(1);
+    }
+
+    .album-modal-header {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      background: rgba(240, 240, 240, 0.5);
+    }
+
+    .album-modal-header .mac-window-controls {
+      position: absolute;
+      left: 12px;
+    }
+
+    .album-modal-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #1d1d1f;
+    }
+
+    .album-modal-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .album-modal-body label {
+      font-size: 12px;
+      color: #3a3a3c;
+      font-weight: 500;
+    }
+
+    .album-modal-body input {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      outline: none;
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.9);
+      transition: all 0.2s ease;
+    }
+
+    .album-modal-body input:focus {
+      border-color: #007aff;
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
+    }
+
+    .album-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 10px 16px 14px;
+    }
+
+    .btn-modal {
+      padding: 5px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+
+    .btn-cancel {
+      background: rgba(0, 0, 0, 0.05);
+      border-color: rgba(0, 0, 0, 0.1);
+      color: #1d1d1f;
+    }
+    .btn-cancel:hover { background: rgba(0, 0, 0, 0.1); }
+
+    .btn-primary {
+      background: #007aff;
+      color: #ffffff;
+    }
+    .btn-primary:hover { background: #0062cc; }
+
+    .toast {
+      position: fixed;
+      top: 60px; right: 20px;
+      background-color: rgba(255, 255, 255, 0.9);
+      color: #1d1d1f;
+      border: 1px solid rgba(0,0,0,0.1);
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 500;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+      z-index: 4000;
+      backdrop-filter: blur(15px);
+      opacity: 0;
+      transform: translateY(-10px) scale(0.95);
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  </style>
+
+  <style>
+    /* Dark mode overrides - Photos */
+    body.dark-mode { background-color: #1c1c1e; color: #f2f2f7; }
+    body.dark-mode .sidebar { background-color: rgba(28,28,30,0.85); border-right-color: rgba(255,255,255,0.08); }
+    body.dark-mode .sidebar-title { color: #f2f2f7; }
+    body.dark-mode .menu-group-title { color: #8e8e93; }
+    body.dark-mode .menu-item { color: #f2f2f7; }
+    body.dark-mode .menu-item:hover { background-color: rgba(255,255,255,0.06); }
+    body.dark-mode .menu-item.active { background-color: #0a84ff; color: #ffffff; }
+    body.dark-mode .main { background-color: #1c1c1e; }
+    body.dark-mode .toolbar { background-color: rgba(28,28,30,0.85); border-bottom-color: rgba(255,255,255,0.08); }
+    body.dark-mode .toolbar-center { background-color: rgba(118,118,128,0.24); }
+    body.dark-mode .segment-btn { color: #f2f2f7; }
+    body.dark-mode .segment-btn.active { background-color: #3a3a3c; box-shadow: 0 1px 3px rgba(0,0,0,0.3); color: #fff; }
+    body.dark-mode .search-box { background-color: rgba(58,58,60,0.6); }
+    body.dark-mode .search-box:focus-within { background-color: #3a3a3c; }
+    body.dark-mode .search-input { color: #f2f2f7; }
+    body.dark-mode .search-input::placeholder { color: #8e8e93; }
+    body.dark-mode .btn-import { background-color: #2c2c2e; border-color: #3a3a3c; color: #0a84ff; }
+    body.dark-mode .btn-import:hover { background-color: #3a3a3c; }
+    body.dark-mode .grid-container { background-color: #1c1c1e; }
+    body.dark-mode .view-header { color: #8e8e93; }
+    body.dark-mode .bottom-bar { background-color: rgba(28,28,30,0.85); border-color: rgba(255,255,255,0.08); }
+    body.dark-mode .slider { background: #3a3a3c; }
+    body.dark-mode .slider::-webkit-slider-thumb { background: #f2f2f7; border-color: #3a3a3c; }
+    body.dark-mode .context-menu { background: rgba(28,28,30,0.92); border-color: rgba(255,255,255,0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+    body.dark-mode .context-menu-item { color: #f2f2f7; }
+    body.dark-mode .context-menu-item:hover { background-color: #0a84ff; color: #ffffff; }
+    body.dark-mode .context-divider { background-color: rgba(255,255,255,0.08); }
+    body.dark-mode .toast { background-color: rgba(28,28,30,0.92); color: #f2f2f7; border-color: rgba(255,255,255,0.1); }
+    body.dark-mode .album-modal-content { background: rgba(28,28,30,0.92); border-color: rgba(255,255,255,0.15); }
+    body.dark-mode .album-modal-header { background: rgba(44,44,46,0.5); border-bottom-color: rgba(255,255,255,0.08); }
+    body.dark-mode .album-modal-title { color: #f2f2f7; }
+    body.dark-mode .album-modal-body label { color: #d1d1d6; }
+    body.dark-mode .album-modal-body input { background: rgba(58,58,60,0.6); border-color: rgba(255,255,255,0.15); color: #f2f2f7; }
+    body.dark-mode .btn-cancel { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.1); color: #f2f2f7; }
+    body.dark-mode .btn-cancel:hover { background: rgba(255,255,255,0.12); }
+    body.dark-mode .btn-add-album:hover { background-color: rgba(255,255,255,0.08); }
+    body.dark-mode .photo-card-label { background: rgba(0,0,0,0.5); }
+  </style>
+
+  <script>
+    (function() {
+      function applyTheme(t) {
+        if (t === 'dark') document.body.classList.add('dark-mode');
+        else document.body.classList.remove('dark-mode');
+      }
+      var params = new URLSearchParams(window.location.search);
+      var urlTheme = params.get('theme');
+      if (urlTheme) applyTheme(urlTheme);
+      window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'tahoe-theme') applyTheme(e.data.theme);
+      });
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="window-controls" style="display:none">
+        <div class="dot red"></div>
+        <div class="dot yellow"></div>
+        <div class="dot green"></div>
+      </div>
+      <div class="sidebar-title">Photos</div>
+    </div>
+
+    <!-- LIBRARY MENU -->
+    <div class="menu-group">
+      <div class="menu-group-title">Library</div>
+      <div class="menu-item active" onclick="showAllPhotos(this)">
+        <svg class="icon" style="color: #007aff;" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+        Library (All)
+      </div>
+      <div class="menu-item" onclick="showCategory(this, 'Memories')">
+        <svg class="icon" style="color: #ff3b30;" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+        Memories
+      </div>
+      <div class="menu-item" onclick="showCategory(this, 'People & Pets')">
+        <svg class="icon" style="color: #ff9500;" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        People & Pets
+      </div>
+      <div class="menu-item" onclick="showCategory(this, 'Places')">
+        <svg class="icon" style="color: #34c759;" viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>
+        Places
+      </div>
+    </div>
+
+    <!-- MEDIA TYPES MENU -->
+    <div class="menu-group">
+      <div class="menu-group-title">Media Types</div>
+      <div class="menu-item" onclick="showMediaType(this, 'image')">
+        <svg class="icon" style="color: #007aff;" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        Photos
+      </div>
+      <div class="menu-item" onclick="showMediaType(this, 'video')">
+        <svg class="icon" style="color: #5856d6;" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+        Videos
+      </div>
+    </div>
+
+    <!-- PINNED MENU -->
+    <div class="menu-group">
+      <div class="menu-group-title">Pinned</div>
+      <div class="menu-item" id="favMenuItem" onclick="showFavorites(this)">
+        <svg class="icon" style="color: #ff2d55; fill: #ff2d55;" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        Favorites
+      </div>
+    </div>
+
+    <!-- ALBUMS MENU -->
+    <div class="menu-group">
+      <div class="menu-group-header">
+        <span class="menu-group-title">My Albums</span>
+        <button class="btn-add-album" onclick="addNewAlbum()" title="Tambah Album">+</button>
+      </div>
+      <div id="albumList">
+        <div class="menu-item" onclick="filterAlbum(this, 'Cinematic')">
+          <svg class="icon" style="color: #5856d6;" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          Cinematic
+        </div>
+        <div class="menu-item" onclick="filterAlbum(this, 'Nature')">
+          <svg class="icon" style="color: #5856d6;" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          Nature
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN VIEW -->
+  <div class="main">
+    <div class="toolbar">
+      <div class="toolbar-left"></div>
+
+      <div class="toolbar-center">
+        <button class="segment-btn active" onclick="changeView('Photos', this)">Photos</button>
+        <button class="segment-btn" onclick="changeView('Days', this)">Days</button>
+        <button class="segment-btn" onclick="changeView('Months', this)">Months</button>
+        <button class="segment-btn" onclick="changeView('Years', this)">Years</button>
+      </div>
+
+      <div class="toolbar-right">
+        <div class="search-box">
+          <svg class="icon" style="color: #8e8e93;" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" class="search-input" id="searchInput" placeholder="Search" oninput="searchPhotos()">
+        </div>
+
+        <input type="file" id="fileInput" accept="image/*,video/*" multiple style="display: none;" onchange="handleFileImport(event)">
+        <button class="btn-import" onclick="document.getElementById('fileInput').click()">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Import
+        </button>
+      </div>
+    </div>
+
+    <!-- GRID CONTAINER -->
+    <div class="grid-container" id="gridContainer" tabindex="0" onclick="deselectAll()">
+      <div id="viewHeader" class="view-header">All Photos</div>
+      <div class="grid" id="photoGrid"></div>
+    </div>
+
+    <!-- BOTTOM ZOOM BAR -->
+    <div class="bottom-bar">
+      <svg class="icon" style="color: #8e8e93; width: 12px; height: 12px;" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect></svg>
+      <input type="range" min="100" max="220" value="130" class="slider" id="zoomSlider">
+      <svg class="icon" style="color: #8e8e93; width: 18px; height: 18px;" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect></svg>
+    </div>
+  </div>
+
+  <!-- CONTEXT MENU -->
+  <div class="context-menu" id="contextMenu">
+    <div class="context-menu-item" onclick="openPreviewFromContext()">
+      <span>Quick Look</span>
+      <span style="font-size: 10px; opacity: 0.6;">Space</span>
+    </div>
+    <div class="context-divider"></div>
+    <div class="context-menu-item" onclick="toggleFavoriteFromContext()">
+      <span id="ctxFavText">Favorite</span>
+      <span style="font-size: 10px; opacity: 0.6;">F</span>
+    </div>
+    <div class="context-menu-item" onclick="downloadSelected()">
+      <span>Download</span>
+    </div>
+    <div class="context-divider"></div>
+    <div class="context-menu-item" style="color: #ff3b30;" onclick="deleteSelected()">
+      <span id="ctxDeleteText">Delete Selected</span>
+      <span style="font-size: 10px; opacity: 0.6;">⌫</span>
+    </div>
+  </div>
+
+  <!-- QUICK LOOK PREVIEW MODAL -->
+  <div class="preview-modal" id="previewModal" onclick="closePreview(event)">
+    <div class="preview-container" onclick="event.stopPropagation()">
+      <div class="preview-header">
+        <div class="mac-window-controls">
+          <button class="mac-btn close" onclick="closePreviewModal()"></button>
+          <button class="mac-btn minimize"></button>
+          <button class="mac-btn maximize"></button>
+        </div>
+        <span class="preview-title" id="previewTitle">Photo Preview</span>
+        <div class="preview-actions">
+          <button class="btn-preview-action" id="btnToggleEdit" onclick="toggleEditMode()">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            Edit
+          </button>
+          <button class="btn-preview-action" id="btnRotateMedia" onclick="rotatePreview()">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M21.5 2v6h-6"></path><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+            Rotate
+          </button>
+          <button class="btn-preview-action" id="btnResetZoom" onclick="resetZoom()">100%</button>
+        </div>
+      </div>
+
+      <!-- EDIT TOOLBAR MENU MAC OS STYLE -->
+      <div class="edit-toolbar" id="editToolbar">
+        <div class="edit-group">
+          <span class="edit-label">Filter:</span>
+          <select class="edit-select" id="filterSelect" onchange="applyImageEdits()">
+            <option value="none">Original</option>
+            <option value="grayscale(100%)">Mono (B&W)</option>
+            <option value="sepia(100%)">Sepia</option>
+            <option value="invert(100%)">Invert</option>
+            <option value="saturate(200%)">Vivid</option>
+          </select>
+        </div>
+
+        <div class="edit-group">
+          <span class="edit-label">Kecerahan:</span>
+          <input type="range" class="edit-input-range" id="brightnessInput" min="50" max="150" value="100" oninput="applyImageEdits()">
+        </div>
+
+        <div class="edit-group">
+          <span class="edit-label">Kontras:</span>
+          <input type="range" class="edit-input-range" id="contrastInput" min="50" max="150" value="100" oninput="applyImageEdits()">
+        </div>
+
+        <div class="edit-group">
+          <button class="btn-preview-action" onclick="flipImage('h')">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 23l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg> Flip H
+          </button>
+          <button class="btn-preview-action" onclick="flipImage('v')">
+            <svg class="icon" style="transform: rotate(90deg);" viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="M7 23l-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg> Flip V
+          </button>
+        </div>
+
+        <div class="edit-group" id="cropBtnGroup">
+          <button class="btn-preview-action" id="btnCropToggle" onclick="toggleCropBox()">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"></path><path d="M18 22V8a2 2 0 0 0-2-2H2"></path></svg> Crop
+          </button>
+          <button class="btn-preview-action" id="btnApplyCrop" style="display:none; background:#34c759; border-color:#34c759;" onclick="applyCrop()">
+            ✓ Potong
+          </button>
+        </div>
+
+        <div class="edit-group">
+          <button class="btn-preview-action" style="background:#007aff; border-color:#007aff;" onclick="saveEditedMedia()">
+            Simpan
+          </button>
+        </div>
+      </div>
+
+      <div class="preview-body" id="previewBody">
+        <button class="preview-nav prev-btn" onclick="navigatePreview(-1)">
+          <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+
+        <div class="media-wrapper" id="mediaWrapper">
+          <canvas id="editCanvas" style="display:none;"></canvas>
+          <div class="crop-overlay" id="cropOverlay"></div>
+        </div>
+
+        <button class="preview-nav next-btn" onclick="navigatePreview(1)">
+          <svg class="icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      </div>
+
+      <!-- CUSTOM MAC OS VIDEO CONTROLS -->
+      <div class="mac-video-controls" id="macVideoToolbar" style="display: none;">
+        <button class="mac-tool-btn" id="macPlayBtn" onclick="togglePlayVideo()">
+          <svg id="playIcon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <input type="range" id="macSeekbar" class="mac-seekbar" value="0" min="0" step="0.1" oninput="seekVideo(this.value)">
+        <span id="macTimeDisplay" class="mac-time">00:00 / 00:00</span>
+        <button class="mac-tool-btn" onclick="toggleMuteVideo()">
+          <svg id="volumeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+        </button>
+      </div>
+
+      <div class="preview-info">
+        <span id="previewDimensions">1920 x 1080 • JPG</span>
+        <span id="previewZoomScale">Zoom: 100%</span>
+        <span id="previewDate">Imported Today</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL TAMBAH ALBUM ALA MAC OS -->
+  <div class="album-modal" id="albumModal" onclick="closeAlbumModal(event)">
+    <div class="album-modal-content" onclick="event.stopPropagation()">
+      <div class="album-modal-header">
+        <div class="mac-window-controls">
+          <div class="mac-btn close" onclick="closeAlbumModal()"></div>
+        </div>
+        <span class="album-modal-title">New Album</span>
+      </div>
+      <div class="album-modal-body">
+        <label for="newAlbumNameInput">Enter album name:</label>
+        <input type="text" id="newAlbumNameInput" placeholder="Album Name" autofocus onkeydown="if(event.key==='Enter') submitNewAlbum()">
+      </div>
+      <div class="album-modal-footer">
+        <button class="btn-modal btn-cancel" onclick="closeAlbumModal()">Cancel</button>
+        <button class="btn-modal btn-primary" onclick="submitNewAlbum()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">Notice</div>
+
+  <script>
+    const samplePhotos = [
+      { id: 1, name: "Mountain_Sunset.jpg", type: "image", album: "Nature", category: "Memories", isFav: true, url: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80", date: "2026-02-10", size: "2.4 MB" },
+      { id: 2, name: "Neon_City_Lights.jpg", type: "image", album: "Cinematic", category: "Places", isFav: false, url: "https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1200&q=80", date: "2026-02-12", size: "3.1 MB" },
+      { id: 3, name: "Foggy_Forest.jpg", type: "image", album: "Nature", category: "Places", isFav: true, url: "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1200&q=80", date: "2026-02-14", size: "1.8 MB" },
+      { id: 4, name: "Architectural_Abstract.jpg", type: "image", album: "Cinematic", category: "Places", isFav: false, url: "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1200&q=80", date: "2026-02-18", size: "4.0 MB" },
+      { id: 5, name: "Ocean_Waves.jpg", type: "image", album: "Nature", category: "Memories", isFav: false, url: "https://images.unsplash.com/photo-1505118380757-91f5f5632de0?auto=format&fit=crop&w=1200&q=80", date: "2026-02-20", size: "2.9 MB" },
+      { id: 6, name: "Sample_Video.mp4", type: "video", album: "Cinematic", category: "Memories", isFav: true, url: "https://vjs.zencdn.net/v/oceans.mp4", date: "2026-02-25", size: "12.5 MB" },
+      { id: 7, name: "Portrait_Friend.jpg", type: "image", album: "People", category: "People & Pets", isFav: true, url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1200&q=80", date: "2026-02-26", size: "3.5 MB" },
+      { id: 8, name: "Cute_Dog.jpg", type: "image", album: "Pets", category: "People & Pets", isFav: false, url: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=1200&q=80", date: "2026-02-28", size: "2.1 MB" }
+    ];
+
+    let selectedPhotoIds = [];
+    let lastSelectedId = null;
+    let currentFilterState = 'all';
+    let currentAlbumFilter = '';
+    let currentCategoryFilter = '';
+    let currentMediaTypeFilter = '';
+
+    let currentRotation = 0;
+    let currentScale = 1;
+    let flipH = 1, flipV = 1;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let translateX = 0, translateY = 0;
+
+    let isEditMode = false;
+    let isCropActive = false;
+
+    let isCropDragging = false;
+    let cropStartX = 0, cropStartY = 0;
+    let cropInitLeft = 0, cropInitTop = 0;
+
+    const grid = document.getElementById('photoGrid');
+    const viewHeader = document.getElementById('viewHeader');
+    const contextMenu = document.getElementById('contextMenu');
+
+    function renderGrid(photos, label = "Photos") {
+      grid.innerHTML = "";
+      viewHeader.innerText = label;
+
+      if (photos.length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1/-1; color: #8e8e93; font-size: 13px; text-align: center; padding: 40px;">Tidak ada media.</div>`;
+        return;
+      }
+
+      photos.forEach((p, idx) => {
+        const isVideo = p.type === 'video';
+        const isSelected = selectedPhotoIds.includes(p.id);
+
+        const card = document.createElement('div');
+        card.className = `photo-card ${isSelected ? 'selected' : ''}`;
+        card.setAttribute('data-id', p.id);
+        card.style.animationDelay = `${idx * 0.03}s`;
+
+        const videoBadgeHtml = isVideo ? `
+          <div class="video-badge">
+            <svg class="icon" style="width: 10px; height: 10px; fill: currentColor;" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span>VIDEO</span>
+          </div>` : '';
+
+        const mediaContent = isVideo ? `
+          <video src="${p.url}" muted loop onmouseenter="this.play()" onmouseleave="this.pause(); this.currentTime = 0;"></video>
+        ` : '';
+
+        if (!isVideo) card.style.backgroundImage = `url('${p.url}')`;
+
+        card.innerHTML = `
+          ${videoBadgeHtml}
+          ${mediaContent}
+          <button class="fav-btn ${p.isFav ? 'is-fav' : ''}" onclick="toggleFavorite(event, ${p.id})">
+            <svg class="icon" style="width: 12px; height: 12px; fill: currentColor;" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          </button>
+          <span class="photo-card-label">${p.name}</span>
+        `;
+
+        card.onclick = (e) => handleCardClick(e, p.id);
+        card.ondblclick = (e) => { e.stopPropagation(); openPreview(p.id); };
+        card.oncontextmenu = (e) => showContextMenu(e, p.id);
+
+        grid.appendChild(card);
+      });
+    }
+
+    function handleCardClick(event, id) {
+      if (event) event.stopPropagation();
+      const visiblePhotos = getCurrentlyVisiblePhotos();
+
+      if (event.shiftKey && lastSelectedId !== null) {
+        const currentIndex = visiblePhotos.findIndex(p => p.id === id);
+        const lastIndex = visiblePhotos.findIndex(p => p.id === lastSelectedId);
+
+        if (currentIndex !== -1 && lastIndex !== -1) {
+          const start = Math.min(currentIndex, lastIndex);
+          const end = Math.max(currentIndex, lastIndex);
+          const rangeIds = visiblePhotos.slice(start, end + 1).map(p => p.id);
+          selectedPhotoIds = Array.from(new Set([...selectedPhotoIds, ...rangeIds]));
+        }
+      } else if (event.metaKey || event.ctrlKey) {
+        if (selectedPhotoIds.includes(id)) {
+          selectedPhotoIds = selectedPhotoIds.filter(item => item !== id);
+        } else {
+          selectedPhotoIds.push(id);
+        }
+        lastSelectedId = id;
+      } else {
+        selectedPhotoIds = [id];
+        lastSelectedId = id;
+      }
+
+      updateCardSelectionUI();
+    }
+
+    function updateCardSelectionUI() {
+      document.querySelectorAll('.photo-card').forEach(card => {
+        const id = Number(card.getAttribute('data-id'));
+        if (selectedPhotoIds.includes(id)) {
+          card.classList.add('selected');
+        } else {
+          card.classList.remove('selected');
+        }
+      });
+    }
+
+    function deselectAll() {
+      selectedPhotoIds = [];
+      lastSelectedId = null;
+      updateCardSelectionUI();
+      hideContextMenu();
+    }
+
+    function selectAll() {
+      selectedPhotoIds = getCurrentlyVisiblePhotos().map(p => p.id);
+      updateCardSelectionUI();
+    }
+
+    function showContextMenu(e, id) {
+      e.preventDefault();
+      if (!selectedPhotoIds.includes(id)) {
+        selectedPhotoIds = [id];
+        lastSelectedId = id;
+        updateCardSelectionUI();
+      }
+
+      const count = selectedPhotoIds.length;
+      document.getElementById('ctxDeleteText').innerText = count > 1 ? `Delete (${count} items)` : 'Delete Photo';
+      document.getElementById('ctxFavText').innerText = count > 1 ? `Favorite (${count} items)` : 'Favorite';
+
+      contextMenu.style.left = `${Math.min(e.clientX, window.innerWidth - 210)}px`;
+      contextMenu.style.top = `${Math.min(e.clientY, window.innerHeight - 160)}px`;
+      contextMenu.classList.add('show');
+    }
+
+    function hideContextMenu() {
+      contextMenu.classList.remove('show');
+    }
+    document.addEventListener('click', hideContextMenu);
+
+    function openPreviewFromContext() { hideContextMenu(); if (selectedPhotoIds.length > 0) openPreview(selectedPhotoIds[0]); }
+
+    function toggleFavoriteFromContext() {
+      hideContextMenu();
+      selectedPhotoIds.forEach(id => toggleFavorite(null, id));
+    }
+
+    function deleteSelected() {
+      hideContextMenu();
+      if (selectedPhotoIds.length === 0) return;
+
+      const deletedCount = selectedPhotoIds.length;
+      for (let i = samplePhotos.length - 1; i >= 0; i--) {
+        if (selectedPhotoIds.includes(samplePhotos[i].id)) {
+          samplePhotos.splice(i, 1);
+        }
+      }
+
+      selectedPhotoIds = [];
+      lastSelectedId = null;
+      refreshCurrentView();
+      popup(`${deletedCount} item dihapus`);
+    }
+
+    function downloadSelected() {
+      hideContextMenu();
+      selectedPhotoIds.forEach(id => {
+        const photo = samplePhotos.find(p => p.id === id);
+        if (photo) {
+          const a = document.createElement('a');
+          a.href = photo.url;
+          a.download = photo.name;
+          a.target = "_blank";
+          a.click();
+        }
+      });
+    }
+
+    function openPreview(id) {
+      if (!selectedPhotoIds.includes(id)) {
+        selectedPhotoIds = [id];
+        updateCardSelectionUI();
+      }
+
+      resetTransformState();
+      resetEditState();
+
+      const photo = samplePhotos.find(p => p.id === id);
+      if (!photo) return;
+
+      document.getElementById('previewTitle').innerText = photo.name;
+      document.getElementById('previewDimensions').innerText = `${photo.size} • ${photo.type.toUpperCase()}`;
+      document.getElementById('previewDate').innerText = `Date: ${photo.date}`;
+
+      const wrapper = document.getElementById('mediaWrapper');
+      const videoToolbar = document.getElementById('macVideoToolbar');
+
+      Array.from(wrapper.children).forEach(child => {
+        if (child.id !== 'editCanvas' && child.id !== 'cropOverlay') {
+          wrapper.removeChild(child);
+        }
+      });
+
+      if (photo.type === 'video') {
+        const video = document.createElement('video');
+        video.id = 'previewElement';
+        video.src = photo.url;
+        video.autoplay = true;
+        video.preload = "metadata";
+        wrapper.appendChild(video);
+
+        videoToolbar.style.display = 'flex';
+        document.getElementById('btnToggleEdit').style.display = 'none';
+        document.getElementById('btnRotateMedia').style.display = 'none';
+        document.getElementById('btnResetZoom').style.display = 'none';
+        document.getElementById('previewZoomScale').style.display = 'none';
+
+        video.ontimeupdate = updateVideoProgress;
+        video.onloadedmetadata = () => {
+          document.getElementById('macSeekbar').max = video.duration;
+          updateVideoTimeDisplay();
+        };
+
+        const playIcon = document.getElementById('playIcon');
+        playIcon.innerHTML = `<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>`;
+
+      } else {
+        const img = document.createElement('img');
+        img.id = 'previewElement';
+        img.src = photo.url;
+        img.crossOrigin = "anonymous";
+        wrapper.appendChild(img);
+
+        videoToolbar.style.display = 'none';
+        document.getElementById('btnToggleEdit').style.display = 'inline-flex';
+        document.getElementById('btnRotateMedia').style.display = 'inline-flex';
+        document.getElementById('btnResetZoom').style.display = 'inline-flex';
+        document.getElementById('previewZoomScale').style.display = 'inline-block';
+        document.getElementById('cropBtnGroup').style.display = 'flex';
+      }
+
+      const modal = document.getElementById('previewModal');
+      modal.classList.add('active');
+      updateTransform();
+    }
+
+    function closePreviewModal() {
+      const modal = document.getElementById('previewModal');
+      modal.classList.remove('active');
+
+      setTimeout(() => {
+        const wrapper = document.getElementById('mediaWrapper');
+        Array.from(wrapper.children).forEach(child => {
+          if (child.id !== 'editCanvas' && child.id !== 'cropOverlay') {
+            if (child.tagName.toLowerCase() === 'video') child.pause();
+            wrapper.removeChild(child);
+          }
+        });
+        isEditMode = false;
+        document.getElementById('editToolbar').classList.remove('open');
+        document.getElementById('btnToggleEdit').classList.remove('active');
+        hideCropBox();
+      }, 250);
+    }
+
+    function closePreview(e) {
+      if (e.target.id === 'previewModal') closePreviewModal();
+    }
+
+    function togglePlayVideo() {
+      const video = document.querySelector('#mediaWrapper video');
+      if (!video) return;
+      const playIcon = document.getElementById('playIcon');
+
+      if (video.paused) {
+        video.play();
+        playIcon.innerHTML = `<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>`;
+      } else {
+        video.pause();
+        playIcon.innerHTML = `<path d="M8 5v14l11-7z"/>`;
+      }
+    }
+
+    function seekVideo(val) {
+      const video = document.querySelector('#mediaWrapper video');
+      if (video) video.currentTime = val;
+    }
+
+    function updateVideoProgress() {
+      const video = document.querySelector('#mediaWrapper video');
+      if (!video) return;
+      const seekbar = document.getElementById('macSeekbar');
+      seekbar.value = video.currentTime;
+      updateVideoTimeDisplay();
+    }
+
+    function updateVideoTimeDisplay() {
+      const video = document.querySelector('#mediaWrapper video');
+      if (!video) return;
+      const format = (sec) => {
+        const m = Math.floor(sec / 60) || 0;
+        const s = Math.floor(sec % 60) || 0;
+        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      };
+      document.getElementById('macTimeDisplay').innerText =
+        `${format(video.currentTime)} / ${format(video.duration || 0)}`;
+    }
+
+    function toggleMuteVideo() {
+      const video = document.querySelector('#mediaWrapper video');
+      if (video) video.muted = !video.muted;
+    }
+
+    function resetTransformState() {
+      currentRotation = 0;
+      currentScale = 1;
+      flipH = 1; flipV = 1;
+      translateX = 0; translateY = 0;
+    }
+
+    function resetEditState() {
+      document.getElementById('filterSelect').value = 'none';
+      document.getElementById('brightnessInput').value = 100;
+      document.getElementById('contrastInput').value = 100;
+      hideCropBox();
+      applyImageEdits();
+    }
+
+    function toggleEditMode() {
+      isEditMode = !isEditMode;
+      const toolbar = document.getElementById('editToolbar');
+      const btn = document.getElementById('btnToggleEdit');
+
+      if (isEditMode) {
+        toolbar.classList.add('open');
+        btn.classList.add('active');
+      } else {
+        toolbar.classList.remove('open');
+        btn.classList.remove('active');
+        hideCropBox();
+      }
+    }
+
+    function applyImageEdits() {
+      const el = document.getElementById('previewElement');
+      if (!el) return;
+
+      const filterVal = document.getElementById('filterSelect').value;
+      const brightnessVal = document.getElementById('brightnessInput').value;
+      const contrastVal = document.getElementById('contrastInput').value;
+
+      let filterCss = `brightness(${brightnessVal}%) contrast(${contrastVal}%)`;
+      if (filterVal !== 'none') filterCss += ` ${filterVal}`;
+
+      el.style.filter = filterCss;
+    }
+
+    function flipImage(direction) {
+      if (direction === 'h') flipH = flipH === 1 ? -1 : 1;
+      if (direction === 'v') flipV = flipV === 1 ? -1 : 1;
+      updateTransform();
+    }
+
+    function updateTransform() {
+      const el = document.getElementById('previewElement');
+      if (el && el.tagName.toLowerCase() === 'img') {
+        el.style.transform = `translate(${translateX}px, ${translateY}px) rotate(${currentRotation}deg) scale(${currentScale}) scaleX(${flipH}) scaleY(${flipV})`;
+      }
+      document.getElementById('previewZoomScale').innerText = `Zoom: ${Math.round(currentScale * 100)}%`;
+    }
+
+    function rotatePreview() {
+      currentRotation = (currentRotation + 90) % 360;
+      updateTransform();
+    }
+
+    function resetZoom() {
+      resetTransformState();
+      updateTransform();
+    }
+
+    function toggleCropBox() {
+      const cropOverlay = document.getElementById('cropOverlay');
+      const applyBtn = document.getElementById('btnApplyCrop');
+      const el = document.getElementById('previewElement');
+
+      if (!el || el.tagName.toLowerCase() !== 'img') {
+        popup('Fitur crop hanya untuk foto');
+        return;
+      }
+
+      isCropActive = !isCropActive;
+
+      if (isCropActive) {
+        const wrapper = document.getElementById('mediaWrapper');
+        const imgRect = el.getBoundingClientRect();
+        const wrapperRect = wrapper.getBoundingClientRect();
+
+        const initialWidth = imgRect.width * 0.6;
+        const initialHeight = imgRect.height * 0.6;
+        const initialLeft = (imgRect.left - wrapperRect.left) + (imgRect.width * 0.2);
+        const initialTop = (imgRect.top - wrapperRect.top) + (imgRect.height * 0.2);
+
+        cropOverlay.style.display = 'block';
+        cropOverlay.style.width = `${initialWidth}px`;
+        cropOverlay.style.height = `${initialHeight}px`;
+        cropOverlay.style.left = `${initialLeft}px`;
+        cropOverlay.style.top = `${initialTop}px`;
+
+        applyBtn.style.display = 'inline-flex';
+        document.getElementById('btnCropToggle').innerText = 'Batal';
+      } else {
+        hideCropBox();
+      }
+    }
+
+    function hideCropBox() {
+      isCropActive = false;
+      document.getElementById('cropOverlay').style.display = 'none';
+      document.getElementById('btnApplyCrop').style.display = 'none';
+      document.getElementById('btnCropToggle').innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"></path><path d="M18 22V8a2 2 0 0 0-2-2H2"></path></svg> Crop`;
+    }
+
+    const cropOverlay = document.getElementById('cropOverlay');
+
+    cropOverlay.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      isCropDragging = true;
+      cropStartX = e.clientX;
+      cropStartY = e.clientY;
+      cropInitLeft = cropOverlay.offsetLeft;
+      cropInitTop = cropOverlay.offsetTop;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isCropDragging) return;
+      const dx = e.clientX - cropStartX;
+      const dy = e.clientY - cropStartY;
+      cropOverlay.style.left = `${cropInitLeft + dx}px`;
+      cropOverlay.style.top = `${cropInitTop + dy}px`;
+    });
+
+    window.addEventListener('mouseup', () => { isCropDragging = false; });
+
+    function applyCrop() {
+      const img = document.getElementById('previewElement');
+      const cropOverlay = document.getElementById('cropOverlay');
+      const canvas = document.getElementById('editCanvas');
+      const ctx = canvas.getContext('2d');
+
+      if (!img || !cropOverlay) return;
+
+      const imgRect = img.getBoundingClientRect();
+      const cropRect = cropOverlay.getBoundingClientRect();
+
+      const scaleX = img.naturalWidth / imgRect.width;
+      const scaleY = img.naturalHeight / imgRect.height;
+
+      const cropX = Math.max(0, (cropRect.left - imgRect.left) * scaleX);
+      const cropY = Math.max(0, (cropRect.top - imgRect.top) * scaleY);
+      const cropWidth = Math.min(img.naturalWidth, cropRect.width * scaleX);
+      const cropHeight = Math.min(img.naturalHeight, cropRect.height * scaleY);
+
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+
+      ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+      const croppedUrl = canvas.toDataURL('image/jpeg');
+      img.src = croppedUrl;
+
+      const activeId = selectedPhotoIds[0];
+      const photo = samplePhotos.find(p => p.id === activeId);
+      if (photo) {
+        photo.url = croppedUrl;
+        refreshCurrentView();
+      }
+
+      hideCropBox();
+      popup('Foto berhasil dipotong');
+    }
+
+    function saveEditedMedia() {
+      const img = document.getElementById('previewElement');
+      if (!img || img.tagName.toLowerCase() !== 'img') {
+        popup('Media berhasil diperbarui');
+        return;
+      }
+
+      const canvas = document.getElementById('editCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const isRotated90 = (currentRotation / 90) % 2 !== 0;
+      canvas.width = isRotated90 ? img.naturalHeight : img.naturalWidth;
+      canvas.height = isRotated90 ? img.naturalWidth : img.naturalHeight;
+
+      ctx.filter = img.style.filter;
+
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((currentRotation * Math.PI) / 180);
+      ctx.scale(flipH, flipV);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      ctx.restore();
+
+      const newUrl = canvas.toDataURL('image/jpeg');
+      img.src = newUrl;
+
+      const activeId = selectedPhotoIds[0];
+      const photo = samplePhotos.find(p => p.id === activeId);
+      if (photo) {
+        photo.url = newUrl;
+        refreshCurrentView();
+      }
+
+      resetTransformState();
+      popup('Edit berhasil disimpan');
+    }
+
+    function navigatePreview(direction) {
+      const activeList = getCurrentlyVisiblePhotos();
+      if (activeList.length === 0) return;
+
+      const currentId = selectedPhotoIds[0] || activeList[0].id;
+      let currentIndex = activeList.findIndex(p => p.id === currentId);
+
+      let nextIndex = currentIndex + direction;
+      if (nextIndex < 0) nextIndex = activeList.length - 1;
+      if (nextIndex >= activeList.length) nextIndex = 0;
+
+      selectedPhotoIds = [activeList[nextIndex].id];
+      updateCardSelectionUI();
+      openPreview(activeList[nextIndex].id);
+    }
+
+    const previewBody = document.getElementById('previewBody');
+
+    previewBody.addEventListener('wheel', (e) => {
+      if (!document.getElementById('previewModal').classList.contains('active')) return;
+      const el = document.getElementById('previewElement');
+      if (!el || el.tagName.toLowerCase() !== 'img') return;
+
+      e.preventDefault();
+
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      currentScale = Math.min(Math.max(0.5, currentScale * zoomFactor), 5);
+      updateTransform();
+    }, { passive: false });
+
+    previewBody.addEventListener('mousedown', (e) => {
+      if (currentScale <= 1 || isCropActive) return;
+      isDragging = true;
+      startX = e.clientX - translateX;
+      startY = e.clientY - translateY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      translateX = e.clientX - startX;
+      translateY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    document.addEventListener('keydown', (e) => {
+      const isModalOpen = document.getElementById('previewModal').classList.contains('active');
+      const isInputActive = document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT';
+
+      if (isInputActive) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selectAll();
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (isModalOpen) {
+          closePreviewModal();
+        } else if (selectedPhotoIds.length > 0) {
+          openPreview(selectedPhotoIds[0]);
+        }
+      }
+
+      if (e.key === 'Escape') {
+        if (isModalOpen) closePreviewModal();
+        else deselectAll();
+      }
+
+      if ((e.key === 'f' || e.key === 'F') && selectedPhotoIds.length > 0) {
+        selectedPhotoIds.forEach(id => toggleFavorite(null, id));
+      }
+
+      if ((e.key === 'Backspace' || e.key === 'Delete') && selectedPhotoIds.length > 0 && !isModalOpen) {
+        deleteSelected();
+      }
+
+      if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        const list = getCurrentlyVisiblePhotos();
+        if (list.length === 0) return;
+
+        let lastId = selectedPhotoIds[selectedPhotoIds.length - 1] || list[0].id;
+        let index = list.findIndex(p => p.id === lastId);
+
+        if (isModalOpen) {
+          if (e.key === 'ArrowRight') navigatePreview(1);
+          if (e.key === 'ArrowLeft') navigatePreview(-1);
+        } else {
+          e.preventDefault();
+          const gridComputed = window.getComputedStyle(grid);
+          const columnsCount = gridComputed.getPropertyValue('grid-template-columns').split(' ').length;
+
+          if (e.key === 'ArrowRight') index = Math.min(list.length - 1, index + 1);
+          if (e.key === 'ArrowLeft') index = Math.max(0, index - 1);
+          if (e.key === 'ArrowDown') index = Math.min(list.length - 1, index + columnsCount);
+          if (e.key === 'ArrowUp') index = Math.max(0, index - columnsCount);
+
+          const targetId = list[index].id;
+          if (e.shiftKey) {
+            handleCardClick({ shiftKey: true }, targetId);
+          } else {
+            selectedPhotoIds = [targetId];
+            lastSelectedId = targetId;
+            updateCardSelectionUI();
+          }
+        }
+      }
+    });
+
+    function getCurrentlyVisiblePhotos() {
+      if (currentFilterState === 'fav') return samplePhotos.filter(p => p.isFav);
+      if (currentFilterState === 'album') return samplePhotos.filter(p => p.album === currentAlbumFilter);
+      if (currentFilterState === 'category') return samplePhotos.filter(p => p.category === currentCategoryFilter);
+      if (currentFilterState === 'mediaType') return samplePhotos.filter(p => p.type === currentMediaTypeFilter);
+      return samplePhotos;
+    }
+
+    function refreshCurrentView() {
+      renderGrid(getCurrentlyVisiblePhotos(), viewHeader.innerText);
+    }
+
+    function handleFileImport(event) {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      let count = 0;
+      Array.from(files).forEach(file => {
+        const isVideo = file.type.startsWith('video/');
+        const fileUrl = URL.createObjectURL(file);
+
+        samplePhotos.unshift({
+          id: Date.now() + Math.random(),
+          name: file.name,
+          type: isVideo ? 'video' : 'image',
+          album: currentAlbumFilter || 'Uncategorized',
+          category: currentCategoryFilter || 'Memories',
+          isFav: false,
+          url: fileUrl,
+          date: new Date().toISOString().split('T')[0],
+          size: `${(file.size / (1024*1024)).toFixed(1)} MB`
+        });
+        count++;
+      });
+
+      if (count > 0) {
+        popup(`Berhasil mengimpor ${count} media`);
+        refreshCurrentView();
+      }
+      event.target.value = '';
+    }
+
+    function toggleFavorite(event, photoId) {
+      if (event) event.stopPropagation();
+      const photo = samplePhotos.find(p => p.id === photoId);
+      if (photo) {
+        photo.isFav = !photo.isFav;
+        refreshCurrentView();
+      }
+    }
+
+    function addNewAlbum() {
+      const modal = document.getElementById('albumModal');
+      const input = document.getElementById('newAlbumNameInput');
+      input.value = '';
+      modal.classList.add('active');
+      setTimeout(() => input.focus(), 100);
+    }
+
+    function closeAlbumModal(e) {
+      if (e && e.target !== e.currentTarget && e.type === 'click') return;
+      document.getElementById('albumModal').classList.remove('active');
+    }
+
+    function submitNewAlbum() {
+      const input = document.getElementById('newAlbumNameInput');
+      const albumName = input.value.trim();
+
+      if (albumName !== "") {
+        const albumList = document.getElementById('albumList');
+        const newAlbumElem = document.createElement('div');
+        newAlbumElem.className = 'menu-item';
+        newAlbumElem.onclick = function() { filterAlbum(this, albumName); };
+        newAlbumElem.innerHTML = `
+          <svg class="icon" style="color: #5856d6;" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          ${albumName}
+        `;
+        albumList.appendChild(newAlbumElem);
+        filterAlbum(newAlbumElem, albumName);
+        closeAlbumModal();
+        popup(`Album "${albumName}" berhasil dibuat`);
+      }
+    }
+
+    function showAllPhotos(element) {
+      currentFilterState = 'all';
+      currentCategoryFilter = '';
+      currentAlbumFilter = '';
+      currentMediaTypeFilter = '';
+      setActiveMenu(element);
+      renderGrid(samplePhotos, "Library (All)");
+    }
+
+    function showFavorites(element) {
+      currentFilterState = 'fav';
+      currentCategoryFilter = '';
+      currentAlbumFilter = '';
+      currentMediaTypeFilter = '';
+      setActiveMenu(element);
+      renderGrid(samplePhotos.filter(p => p.isFav), "Favorites");
+    }
+
+    function showCategory(element, categoryName) {
+      currentFilterState = 'category';
+      currentCategoryFilter = categoryName;
+      currentAlbumFilter = '';
+      currentMediaTypeFilter = '';
+      setActiveMenu(element);
+      renderGrid(samplePhotos.filter(p => p.category === categoryName), categoryName);
+      popup(`Menampilkan kategori: ${categoryName}`);
+    }
+
+    function showMediaType(element, type) {
+      currentFilterState = 'mediaType';
+      currentMediaTypeFilter = type;
+      currentCategoryFilter = '';
+      currentAlbumFilter = '';
+      setActiveMenu(element);
+
+      const label = type === 'image' ? 'Photos' : 'Videos';
+      renderGrid(samplePhotos.filter(p => p.type === type), label);
+      popup(`Menampilkan: ${label}`);
+    }
+
+    function filterAlbum(element, albumName) {
+      currentFilterState = 'album';
+      currentAlbumFilter = albumName;
+      currentCategoryFilter = '';
+      currentMediaTypeFilter = '';
+      setActiveMenu(element);
+      renderGrid(samplePhotos.filter(p => p.album === albumName), `Album: ${albumName}`);
+    }
+
+    function setActiveMenu(element) {
+      document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+      element.classList.add('active');
+    }
+
+    function changeView(mode, btn) {
+      document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderGrid(samplePhotos, `Grouped by ${mode}`);
+    }
+
+    function searchPhotos() {
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = samplePhotos.filter(p =>
+        p.name.toLowerCase().includes(query) || (p.album && p.album.toLowerCase().includes(query)) || (p.category && p.category.toLowerCase().includes(query))
+      );
+      renderGrid(filtered, query ? `Search: "${query}"` : "Library (All)");
+    }
+
+    document.getElementById('zoomSlider').addEventListener('input', function() {
+      grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${this.value}px, 1fr))`;
+    });
+
+    let timer;
+    function popup(text) {
+      const toast = document.getElementById('toast');
+      toast.innerText = text;
+      toast.classList.add('show');
+      clearTimeout(timer);
+      timer = setTimeout(() => { toast.classList.remove('show'); }, 2200);
+    }
+
+    window.addEventListener('message', function(e) {
+      if (!e.data) return;
+      if (e.data.type === 'shared-media' && Array.isArray(e.data.media)) {
+        var existingIds = new Set(samplePhotos.map(function(p) { return p.id; }));
+        e.data.media.forEach(function(m) {
+          if (!existingIds.has(m.id)) {
+            samplePhotos.unshift({
+              id: m.id, name: m.name, type: m.type, album: 'Photo Booth',
+              category: 'Memories', isFav: false, url: m.url,
+              date: m.date, size: m.size
+            });
+          }
+        });
+        refreshCurrentView();
+      }
+      if (e.data.type === 'public-photos' && Array.isArray(e.data.photos)) {
+        // Remove previously-injected public photos (string IDs from Supabase)
+        for (var i = samplePhotos.length - 1; i >= 0; i--) {
+          if (typeof samplePhotos[i].id === 'string' && samplePhotos[i]._public) {
+            samplePhotos.splice(i, 1);
+          }
+        }
+        e.data.photos.forEach(function(p) {
+          samplePhotos.push({
+            id: p.id, name: p.name, type: p.type, album: p.album || 'Public',
+            category: p.category || 'Memories', isFav: !!p.isFav, url: p.url,
+            date: p.date, size: p.size || '—', _public: true
+          });
+        });
+        refreshCurrentView();
+      }
+    });
+
+    renderGrid(samplePhotos, "Library (All)");
+  </script>
+</body>
+</html>

@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>macOS Photo Booth UI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  <style>
+    /* Filter CSS — dynamically injected via postMessage */
+    .filter-normal { filter: none; }
+    .filter-thermal { filter: invert(100%) hue-rotate(180deg) saturate(300%); }
+    .filter-xray { filter: invert(100%) grayscale(100%); }
+    .filter-popart { filter: contrast(200%) saturate(300%) hue-rotate(90deg); }
+    .filter-glow { filter: brightness(130%) contrast(120%) drop-shadow(0 0 10px rgba(255,255,255,0.8)); }
+    .filter-comic { filter: contrast(300%) grayscale(50%); }
+    .filter-scifi { filter: hue-rotate(240deg) saturate(200%) contrast(150%); }
+    .filter-tunnel { filter: contrast(150%) hue-rotate(300deg); }
+    .filter-bw { filter: grayscale(100%) contrast(120%); }
+
+    .filter-sepia { filter: sepia(100%); }
+    .filter-hue { filter: hue-rotate(180deg); }
+    .filter-invert { filter: invert(100%); }
+    .filter-blur { filter: blur(3px); }
+    .filter-saturate { filter: saturate(500%); }
+    .filter-contrast { filter: contrast(300%); }
+
+    /* Dynamic filter styles container */
+    #dynamic-filter-styles { display: none; }
+
+    /* Custom Clean Filmstrip (Scrollbar Tersembunyi Total) */
+    .filmstrip-scroll {
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE & Edge */
+      overscroll-behavior-x: contain;
+    }
+    .filmstrip-scroll::-webkit-scrollbar {
+      display: none; /* Chrome, Safari, Opera */
+    }
+
+    /* macOS Animations */
+    .mac-transition {
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .media-item {
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                  opacity 0.25s ease;
+    }
+    .media-item:hover {
+      transform: translateY(-2px);
+    }
+    .media-item.deleting {
+      opacity: 0;
+      transform: scale(0.3) translateY(20px);
+    }
+
+    .panel-pop {
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .panel-pop.hidden-panel {
+      opacity: 0;
+      transform: scale(0.96);
+      pointer-events: none;
+    }
+    .panel-pop.show-panel {
+      opacity: 1;
+      transform: scale(1);
+      pointer-events: auto;
+    }
+
+    /* SLIDE ANIMATION UNTUK EFFECTS */
+    .effect-slider {
+      display: flex;
+      width: 400%; /* 4 Halaman */
+      height: 100%;
+      transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+  </style>
+
+  <style>
+    /* Dark mode overrides - Photo Booth */
+    body.dark-mode { background: #18181b !important; }
+    body.dark-mode #app-container { background: #18181b !important; }
+    body.dark-mode #filmstrip-container { background: #27272a !important; }
+    body.dark-mode #bottom-toolbar-wrapper { border-color: #3f3f46 !important; }
+    body.dark-mode #normal-toolbar { background: linear-gradient(to bottom, #27272a, #18181b) !important; }
+    body.dark-mode #effects-toolbar { background: linear-gradient(to bottom, #27272a, #18181b) !important; }
+    body.dark-mode #btn-effects-toggle { background: linear-gradient(to bottom, #3f3f46, #27272a) !important; color: #d4d4d8 !important; border-color: #52525b !important; }
+    body.dark-mode #btn-effects-toggle:hover { background: linear-gradient(to bottom, #52525b, #3f3f46) !important; }
+    body.dark-mode .text-zinc-700 { color: #d4d4d8 !important; }
+    body.dark-mode .text-zinc-600 { color: #a1a1aa !important; }
+    body.dark-mode .text-zinc-800 { color: #e4e4e7 !important; }
+    body.dark-mode .text-zinc-900 { color: #f4f4f5 !important; }
+    body.dark-mode .bg-zinc-300\/80 { background: rgba(63,63,70,0.8) !important; }
+    body.dark-mode .border-zinc-400\/80 { border-color: rgba(82,82,91,0.8) !important; }
+    body.dark-mode .border-zinc-400 { border-color: #52525b !important; }
+    body.dark-mode .bg-zinc-400\/80 { background: rgba(82,82,91,0.8) !important; }
+    body.dark-mode .bg-zinc-400\/50 { background: rgba(82,82,91,0.5) !important; }
+    body.dark-mode .hover\:bg-zinc-400\/50:hover { background: rgba(82,82,91,0.5) !important; }
+    body.dark-mode .hover\:text-zinc-900:hover { color: #f4f4f5 !important; }
+    body.dark-mode .hover\:text-zinc-700:hover { color: #d4d4d8 !important; }
+  </style>
+
+  <script>
+    (function() {
+      function applyTheme(t) {
+        if (t === 'dark') document.body.classList.add('dark-mode');
+        else document.body.classList.remove('dark-mode');
+      }
+      var params = new URLSearchParams(window.location.search);
+      var urlTheme = params.get('theme');
+      if (urlTheme) applyTheme(urlTheme);
+      window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'tahoe-theme') applyTheme(e.data.theme);
+        if (e.data && e.data.type === 'tahoe-filters') updateFilters(e.data.filters);
+        if (e.data && e.data.type === 'tahoe-filter-css') injectFilterCSS(e.data.css);
+      });
+    })();
+  </script>
+</head>
+<body class="bg-zinc-200 text-slate-800 h-screen overflow-hidden font-sans select-none" onclick="handleGlobalClick(event)">
+
+  <!-- APP CONTAINER (Tahoe provides outer window chrome) -->
+  <div id="app-container" class="w-full h-full bg-zinc-200 overflow-hidden flex flex-col relative mac-transition" style="border:none;border-radius:0;box-shadow:none;">
+
+    <!-- TOP TOOLBAR (hidden - Tahoe window manager provides chrome) -->
+    <div style="display:none" class="bg-gradient-to-b from-zinc-100 to-zinc-200 border-b border-zinc-300 px-4 py-2 flex items-center justify-between shrink-0 z-30">
+      <div class="flex items-center gap-2 w-1/3">
+        <div class="w-3 h-3 rounded-full bg-rose-500 hover:opacity-80 cursor-pointer border border-rose-600 mac-transition"></div>
+        <div class="w-3 h-3 rounded-full bg-amber-500 hover:opacity-80 cursor-pointer border border-amber-600 mac-transition"></div>
+        <div class="w-3 h-3 rounded-full bg-emerald-500 hover:opacity-80 cursor-pointer border border-emerald-600 mac-transition"></div>
+      </div>
+      <div class="text-zinc-700 text-xs sm:text-sm font-semibold tracking-wide w-1/3 text-center">
+        Photo Booth
+      </div>
+      <div class="w-1/3"></div>
+    </div>
+
+    <!-- MAIN VIEWPORT -->
+    <div id="main-viewport" onclick="clearMediaSelection()" class="relative w-full aspect-[3/2] bg-black flex items-center justify-center overflow-hidden cursor-pointer">
+
+      <!-- Live Video Element -->
+      <video id="webcam" class="w-full h-full object-cover filter-normal -scale-x-100 mac-transition duration-300" autoplay playsinline muted></video>
+
+      <!-- Video Recording Indicator Overlay -->
+      <div id="recording-badge" class="absolute top-4 left-4 bg-red-600/90 text-white px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 hidden shadow-md animate-pulse z-20 mac-transition">
+        <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
+        <span id="recording-timer">00:00</span>
+      </div>
+
+      <!-- Preview Overlay -->
+      <div id="preview-container" class="absolute inset-0 bg-black z-10 panel-pop hidden-panel flex items-center justify-center">
+        <img id="preview-img" src="" class="w-full h-full object-cover hidden mac-transition" />
+        <video id="preview-video" src="" controls class="w-full h-full object-cover hidden -scale-x-100 mac-transition"></video>
+      </div>
+
+      <!-- Flash Overlay -->
+      <div id="flash-overlay" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-150 z-40"></div>
+
+      <!-- LIVE EFFECTS PANEL OVERLAY -->
+      <div id="effects-panel" class="absolute inset-0 bg-black z-20 overflow-hidden panel-pop hidden-panel">
+        <div id="effect-slider" class="effect-slider">
+
+          <!-- PAGE 1 EFFECTS -->
+          <div id="page-1" class="w-1/4 h-full grid grid-cols-3 grid-rows-3 gap-0">
+            <button onclick="applyEffect('normal')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-normal -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Normal</span>
+            </button>
+            <button onclick="applyEffect('thermal')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-thermal -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Thermal</span>
+            </button>
+            <button onclick="applyEffect('xray')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-xray -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">X-Ray</span>
+            </button>
+            <button onclick="applyEffect('popart')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-popart -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Pop Art</span>
+            </button>
+            <button onclick="applyEffect('glow')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-glow -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Glow</span>
+            </button>
+            <button onclick="applyEffect('comic')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-comic -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Comic</span>
+            </button>
+            <button onclick="applyEffect('scifi')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-scifi -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Sci-Fi</span>
+            </button>
+            <button onclick="applyEffect('tunnel')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-tunnel -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Tunnel</span>
+            </button>
+            <button onclick="applyEffect('bw')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-bw -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">B&W</span>
+            </button>
+          </div>
+
+          <!-- PAGE 2 EFFECTS -->
+          <div id="page-2" class="w-1/4 h-full grid grid-cols-3 grid-rows-3 gap-0">
+            <button onclick="applyEffect('sepia')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-sepia -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Sepia</span>
+            </button>
+            <button onclick="applyEffect('hue')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-hue -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Hue Shift</span>
+            </button>
+            <button onclick="applyEffect('invert')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-invert -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Invert</span>
+            </button>
+            <button onclick="applyEffect('blur')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-blur -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Soft Blur</span>
+            </button>
+            <button onclick="applyEffect('saturate')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-saturate -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">Vivid</span>
+            </button>
+            <button onclick="applyEffect('contrast')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
+              <video class="effect-preview-video w-full h-full object-cover filter-contrast -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
+              <span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">High Contrast</span>
+            </button>
+            <div class="bg-black border border-zinc-900"></div>
+            <div class="bg-black border border-zinc-900"></div>
+            <div class="bg-black border border-zinc-900"></div>
+          </div>
+
+          <!-- PAGE 3 & 4 -->
+          <div id="page-3" class="w-1/4 h-full flex items-center justify-center text-zinc-600 bg-black">Halaman Effect 3</div>
+          <div id="page-4" class="w-1/4 h-full flex items-center justify-center text-zinc-600 bg-black">Halaman Effect 4</div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- FILMSTRIP CONTAINER -->
+    <div id="filmstrip-container" class="bg-[#e5e7eb] px-2 py-2 shrink-0 hidden mac-transition overflow-hidden">
+      <div id="filmstrip" class="filmstrip-scroll flex items-center justify-start gap-1.5 overflow-x-auto min-h-[70px] w-full"></div>
+    </div>
+
+    <!-- BOTTOM TOOLBAR CONTAINER -->
+    <div id="bottom-toolbar-wrapper" class="relative shrink-0 border-t border-zinc-400 overflow-hidden h-[60px]">
+
+      <!-- DEFAULT TOOLBAR BAR -->
+      <div id="normal-toolbar" class="absolute inset-0 bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-300 p-3 flex items-center justify-between z-10 mac-transition">
+        <!-- LEFT MODES & TIMER -->
+        <div class="w-1/3 flex items-center gap-3">
+          <div class="flex items-center bg-zinc-300/80 p-1 rounded-lg border border-zinc-400/80 shadow-inner">
+            <button id="mode-4up" onclick="setCaptureMode('4up')" title="4-Up Mode" class="p-1.5 rounded hover:bg-zinc-400/50 text-zinc-600 mac-transition">
+              <i class="fa-solid fa-table-cells-large text-sm sm:text-base"></i>
+            </button>
+            <button id="mode-single" onclick="setCaptureMode('single')" title="Single Photo" class="p-1.5 rounded bg-lime-300/80 text-zinc-800 shadow-sm border border-lime-400 mac-transition">
+              <i class="fa-solid fa-user-large text-sm sm:text-base"></i>
+            </button>
+            <button id="mode-video" onclick="setCaptureMode('video')" title="Video Mode" class="p-1.5 rounded hover:bg-zinc-400/50 text-zinc-600 mac-transition">
+              <i class="fa-solid fa-video text-sm sm:text-base"></i>
+            </button>
+          </div>
+
+          <!-- FIXED SELECT TIMER UI -->
+          <div id="timer-wrapper" class="relative flex items-center">
+            <div class="flex items-center bg-zinc-300/80 p-1 rounded-lg border border-zinc-400/80 shadow-inner gap-1">
+              <button id="btn-timer-toggle" onclick="toggleTimerMenu()" class="px-2.5 py-1 rounded-md text-zinc-800 text-xs font-semibold flex items-center gap-1.5 mac-transition active:scale-95 bg-transparent">
+                <i class="fa-regular fa-clock text-zinc-700"></i>
+                <span id="timer-label">3s</span>
+              </button>
+
+              <div id="timer-options" class="flex items-center gap-0.5 max-w-0 opacity-0 overflow-hidden pointer-events-none mac-transition">
+                <button id="opt-0" onclick="selectTimer(0, 'Off')" class="px-2 py-0.5 rounded text-[11px] font-medium text-zinc-600 hover:text-zinc-900 mac-transition">Off</button>
+                <button id="opt-3" onclick="selectTimer(3, '3s')" class="px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-400/80 text-zinc-900 mac-transition">3s</button>
+                <button id="opt-5" onclick="selectTimer(5, '5s')" class="px-2 py-0.5 rounded text-[11px] font-medium text-zinc-600 hover:text-zinc-900 mac-transition">5s</button>
+                <button id="opt-10" onclick="selectTimer(10, '10s')" class="px-2 py-0.5 rounded text-[11px] font-medium text-zinc-600 hover:text-zinc-900 mac-transition">10s</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CENTER: RED SHUTTER BUTTON -->
+        <div class="w-1/3 flex justify-center">
+          <button id="btn-shutter" onclick="handleShutterClick()" class="group relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-red-600 hover:bg-red-500 active:scale-90 mac-transition shadow-md border-2 border-red-400 hover:shadow-lg hover:shadow-red-500/30">
+            <i id="shutter-icon" class="fa-solid fa-camera text-white text-lg sm:text-xl mac-transition"></i>
+          </button>
+        </div>
+
+        <!-- RIGHT: EFFECTS BUTTON -->
+        <div class="w-1/3 flex justify-end">
+          <button id="btn-effects-toggle" onclick="toggleEffectsPanel()" class="px-5 py-1.5 rounded-md bg-gradient-to-b from-zinc-100 to-zinc-300 hover:from-white hover:to-zinc-200 text-zinc-700 text-xs sm:text-sm font-medium border border-zinc-400 shadow-sm mac-transition active:scale-95">
+            Effects
+          </button>
+        </div>
+      </div>
+
+      <!-- EFFECTS NAVIGATION TOOLBAR BAR -->
+      <div id="effects-toolbar" class="absolute inset-0 bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-300 px-4 py-3 flex items-center justify-between z-20 mac-transition opacity-0 pointer-events-none">
+        <div class="w-1/3"></div>
+        <div class="w-1/3 flex items-center justify-center gap-3">
+          <button onclick="changeEffectPage(-1)" class="text-zinc-700 hover:text-zinc-900 mac-transition active:scale-90">
+            <i class="fa-solid fa-caret-left text-lg"></i>
+          </button>
+          <div class="flex items-center gap-2">
+            <span id="dot-page-1" onclick="goToEffectPage(1)" class="w-2.5 h-2.5 rounded-full bg-lime-600 cursor-pointer mac-transition"></span>
+            <span id="dot-page-2" onclick="goToEffectPage(2)" class="w-2.5 h-2.5 rounded-full bg-zinc-500 hover:bg-zinc-700 cursor-pointer mac-transition"></span>
+            <span id="dot-page-3" onclick="goToEffectPage(3)" class="w-2.5 h-2.5 rounded-full bg-zinc-500 hover:bg-zinc-700 cursor-pointer mac-transition"></span>
+            <span id="dot-page-4" onclick="goToEffectPage(4)" class="w-2.5 h-2.5 rounded-full bg-zinc-500 hover:bg-zinc-700 cursor-pointer mac-transition"></span>
+          </div>
+          <button onclick="changeEffectPage(1)" class="text-zinc-700 hover:text-zinc-900 mac-transition active:scale-90">
+            <i class="fa-solid fa-caret-right text-lg"></i>
+          </button>
+        </div>
+        <div class="w-1/3 flex justify-end">
+          <button onclick="toggleEffectsPanel()" class="px-5 py-1.5 rounded-md bg-gradient-to-b from-zinc-100 to-zinc-300 hover:from-white hover:to-zinc-200 text-zinc-700 text-xs sm:text-sm font-medium border border-zinc-400 shadow-sm mac-transition active:scale-95">
+            Effects
+          </button>
+        </div>
+      </div>
+
+      <!-- RED COUNTDOWN TOOLBAR BAR -->
+      <div id="countdown-toolbar" class="absolute inset-0 bg-red-600 text-white flex items-center justify-center px-8 z-30 mac-transition opacity-0 pointer-events-none">
+        <div class="flex items-center gap-6">
+          <div id="countdown-numbers-container" class="flex items-center gap-4 text-2xl font-semibold"></div>
+          <div class="w-9 h-9 rounded-full bg-white/20 border border-white/30 flex items-center justify-center ml-2">
+            <i class="fa-solid fa-camera text-white/80 text-sm"></i>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- CONTEXT MENU -->
+  <div id="context-menu" class="fixed hidden z-50 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg shadow-2xl py-1 text-xs text-zinc-200 w-56 panel-pop hidden-panel">
+    <div class="px-2 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+      <i class="fa-solid fa-download"></i> Download
+    </div>
+
+    <button onclick="downloadMedia('full')" class="w-full text-left px-4 py-1.5 hover:bg-blue-600 hover:text-white flex items-center justify-between mac-transition">
+      <span class="flex items-center gap-2"><i class="fa-solid fa-expand text-zinc-400 text-[10px]"></i> Download Full</span>
+      <span class="text-[10px] text-zinc-400">16:9</span>
+    </button>
+
+    <button onclick="downloadMedia('photobooth')" class="w-full text-left px-4 py-1.5 hover:bg-blue-600 hover:text-white flex items-center justify-between mac-transition">
+      <span class="flex items-center gap-2"><i class="fa-solid fa-crop-simple text-zinc-400 text-[10px]"></i> Download Versi Photobooth</span>
+      <span class="text-[10px] text-zinc-400">3:2</span>
+    </button>
+
+    <div class="my-1 border-t border-zinc-800"></div>
+
+    <button onclick="deleteSelectedMedia()" class="w-full text-left px-3 py-1.5 hover:bg-rose-600 hover:text-white flex items-center gap-2 text-rose-400 mac-transition">
+      <i class="fa-solid fa-trash text-xs"></i> Delete
+    </button>
+  </div>
+
+  <script>
+    const webcam = document.getElementById('webcam');
+    const previewContainer = document.getElementById('preview-container');
+    const previewImg = document.getElementById('preview-img');
+    const previewVideo = document.getElementById('preview-video');
+    const effectsPanel = document.getElementById('effects-panel');
+    const effectsToolbar = document.getElementById('effects-toolbar');
+    const effectSlider = document.getElementById('effect-slider');
+    const filmstripContainer = document.getElementById('filmstrip-container');
+    const filmstrip = document.getElementById('filmstrip');
+    const flashOverlay = document.getElementById('flash-overlay');
+    const contextMenu = document.getElementById('context-menu');
+    const shutterIcon = document.getElementById('shutter-icon');
+    const recordingBadge = document.getElementById('recording-badge');
+    const recordingTimer = document.getElementById('recording-timer');
+    const timerWrapper = document.getElementById('timer-wrapper');
+    const countdownToolbar = document.getElementById('countdown-toolbar');
+    const countdownNumbersContainer = document.getElementById('countdown-numbers-container');
+
+    let currentMode = 'single';
+    let currentCountdownSec = 3;
+    let isPreviewMode = false;
+    let activePreviewId = null;
+    let selectedIds = new Set();
+    let lastSelectedId = null;
+    let captures = [];
+    let targetContextMediaId = null;
+    let mediaStream = null;
+
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+    let recordInterval = null;
+    let recordSeconds = 0;
+    let autoPreviewTimer = null;
+    let isDeletingInProcess = false;
+    let currentEffectPage = 1;
+    let dynamicFilters = null;
+
+    function injectFilterCSS(cssText) {
+      let styleEl = document.getElementById('dynamic-filter-styles');
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'dynamic-filter-styles';
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent = cssText;
+    }
+
+    function updateFilters(filters) {
+      dynamicFilters = filters;
+      renderEffectPages();
+    }
+
+    function renderEffectPages() {
+      const filters = dynamicFilters || [];
+      const perPage = 9;
+      const pages = [document.getElementById('page-1'), document.getElementById('page-2'), document.getElementById('page-3'), document.getElementById('page-4')];
+
+      pages.forEach((page, pageIdx) => {
+        if (!page) return;
+        page.innerHTML = '';
+        page.className = 'w-1/4 h-full grid grid-cols-3 grid-rows-3 gap-0';
+        const start = pageIdx * perPage;
+        const pageFilters = filters.slice(start, start + perPage);
+        pageFilters.forEach(f => {
+          const btn = document.createElement('button');
+          btn.className = 'group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center';
+          btn.onclick = function() { applyEffect(f.id); };
+          btn.innerHTML = '<video class="effect-preview-video w-full h-full object-cover filter-' + f.id + ' -scale-x-100 pointer-events-none" autoplay playsinline muted></video><span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">' + f.name + '</span>';
+          page.appendChild(btn);
+        });
+        for (let i = pageFilters.length; i < perPage; i++) {
+          const empty = document.createElement('div');
+          empty.className = 'bg-black border border-zinc-900';
+          page.appendChild(empty);
+        }
+      });
+
+      bindStreamToEffectPreviews();
+    }
+
+    function handleGlobalClick(e) {
+      if (!contextMenu.contains(e.target)) {
+        hideContextMenu();
+      }
+    }
+
+    function clearMediaSelection() {
+      if (selectedIds.size > 0 || lastSelectedId !== null) {
+        selectedIds.clear();
+        lastSelectedId = null;
+        renderFilmstrip();
+      }
+    }
+
+    function bindStreamToEffectPreviews() {
+      if (!mediaStream) return;
+      const effectVideos = document.querySelectorAll('.effect-preview-video');
+      effectVideos.forEach(v => {
+        if (v.srcObject !== mediaStream) {
+          v.srcObject = mediaStream;
+          v.play().catch(e => console.log('Video play interrupted:', e));
+        }
+      });
+    }
+
+    function closeAllInterfacePanels(except) {
+      if (except !== 'effects') {
+        effectsPanel.classList.remove('show-panel');
+        effectsPanel.classList.add('hidden-panel');
+        effectsToolbar.classList.remove('opacity-100', 'pointer-events-auto');
+        effectsToolbar.classList.add('opacity-0', 'pointer-events-none');
+      }
+      if (except !== 'preview') {
+        exitPreviewMode();
+      }
+      if (except !== 'timer') {
+        const opts = document.getElementById('timer-options');
+        opts.classList.remove('max-w-xs', 'opacity-100', 'pointer-events-auto');
+        opts.classList.add('max-w-0', 'opacity-0', 'pointer-events-none');
+      }
+    }
+
+    async function initCamera() {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: true
+        });
+
+        webcam.srcObject = mediaStream;
+        bindStreamToEffectPreviews();
+      } catch (err) {
+        console.error("Gagal mengaktifkan kamera:", err);
+      }
+    }
+
+    function toggleEffectsPanel() {
+      const isHidden = effectsPanel.classList.contains('hidden-panel');
+      if (isHidden) {
+        closeAllInterfacePanels('effects');
+        bindStreamToEffectPreviews();
+        effectsPanel.classList.remove('hidden-panel');
+        effectsPanel.classList.add('show-panel');
+        effectsToolbar.classList.remove('opacity-0', 'pointer-events-none');
+        effectsToolbar.classList.add('opacity-100', 'pointer-events-auto');
+      } else {
+        effectsPanel.classList.remove('show-panel');
+        effectsPanel.classList.add('hidden-panel');
+        effectsToolbar.classList.remove('opacity-100', 'pointer-events-auto');
+        effectsToolbar.classList.add('opacity-0', 'pointer-events-none');
+      }
+    }
+
+    function goToEffectPage(page) {
+      currentEffectPage = page;
+      const offsetPercent = (page - 1) * 25;
+      effectSlider.style.transform = `translateX(-${offsetPercent}%)`;
+
+      for (let i = 1; i <= 4; i++) {
+        const dot = document.getElementById(`dot-page-${i}`);
+        if (dot) {
+          if (i === page) {
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-lime-600 cursor-pointer mac-transition';
+          } else {
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-zinc-500 hover:bg-zinc-700 cursor-pointer mac-transition';
+          }
+        }
+      }
+    }
+
+    function changeEffectPage(direction) {
+      let nextPage = currentEffectPage + direction;
+      if (nextPage < 1) nextPage = 4;
+      if (nextPage > 4) nextPage = 1;
+      goToEffectPage(nextPage);
+    }
+
+    function applyEffect(filterName) {
+      webcam.className = `w-full h-full object-cover -scale-x-100 mac-transition duration-300 filter-${filterName}`;
+      effectsPanel.classList.remove('show-panel');
+      effectsPanel.classList.add('hidden-panel');
+      effectsToolbar.classList.remove('opacity-100', 'pointer-events-auto');
+      effectsToolbar.classList.add('opacity-0', 'pointer-events-none');
+    }
+
+    function setCaptureMode(mode) {
+      closeAllInterfacePanels();
+      currentMode = mode;
+
+      document.getElementById('mode-4up').className = 'p-1.5 rounded text-zinc-600 hover:bg-zinc-400/50 mac-transition';
+      document.getElementById('mode-single').className = 'p-1.5 rounded text-zinc-600 hover:bg-zinc-400/50 mac-transition';
+      document.getElementById('mode-video').className = 'p-1.5 rounded text-zinc-600 hover:bg-zinc-400/50 mac-transition';
+
+      const activeBtn = document.getElementById(`mode-${mode}`);
+      activeBtn.className = 'p-1.5 rounded bg-lime-300/80 text-zinc-800 shadow-sm border border-lime-400 mac-transition';
+
+      shutterIcon.className = mode === 'video' ? 'fa-solid fa-video text-white text-lg sm:text-xl mac-transition' : 'fa-solid fa-camera text-white text-lg sm:text-xl mac-transition';
+    }
+
+    function toggleTimerMenu() {
+      const opts = document.getElementById('timer-options');
+      const isExpanded = opts.classList.contains('opacity-100');
+
+      if (!isExpanded) {
+        closeAllInterfacePanels('timer');
+        opts.classList.remove('max-w-0', 'opacity-0', 'pointer-events-none');
+        opts.classList.add('max-w-xs', 'opacity-100', 'pointer-events-auto');
+      } else {
+        opts.classList.remove('max-w-xs', 'opacity-100', 'pointer-events-auto');
+        opts.classList.add('max-w-0', 'opacity-0', 'pointer-events-none');
+      }
+    }
+
+    function selectTimer(sec, label) {
+      currentCountdownSec = sec;
+      document.getElementById('timer-label').innerText = sec === 0 ? 'Off' : label;
+
+      [0, 3, 5, 10].forEach(val => {
+        const btn = document.getElementById(`opt-${val}`);
+        if (btn) {
+          if (val === sec) {
+            btn.className = 'px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-400/80 text-zinc-900 mac-transition';
+          } else {
+            btn.className = 'px-2 py-0.5 rounded text-[11px] font-medium text-zinc-600 hover:text-zinc-900 mac-transition';
+          }
+        }
+      });
+
+      toggleTimerMenu();
+    }
+
+    function handleShutterClick() {
+      if (isPreviewMode) {
+        exitPreviewMode();
+        return;
+      }
+
+      clearMediaSelection();
+
+      if (currentMode === 'video') {
+        if (!isRecording && currentCountdownSec > 0) {
+          startCountdown(currentCountdownSec, () => handleVideoRecording());
+        } else {
+          handleVideoRecording();
+        }
+        return;
+      }
+
+      if (currentMode === '4up') {
+        capture4UpBurst(0);
+        return;
+      }
+
+      if (currentCountdownSec === 0) {
+        triggerFlashAndCapture();
+      } else {
+        startCountdown(currentCountdownSec, () => triggerFlashAndCapture());
+      }
+    }
+
+    function capture4UpBurst(shotIndex) {
+      if (shotIndex >= 4) return;
+
+      const delay = currentCountdownSec === 0 ? 3 : currentCountdownSec;
+      startCountdown(delay, () => {
+        triggerFlashAndCapture();
+        setTimeout(() => {
+          capture4UpBurst(shotIndex + 1);
+        }, 500);
+      });
+    }
+
+    function handleVideoRecording() {
+      if (!isRecording) startRecording();
+      else stopRecording();
+    }
+
+    function startRecording() {
+      closeAllInterfacePanels();
+      recordedChunks = [];
+      const options = { mimeType: 'video/webm;codecs=vp9,opus' };
+      try {
+        mediaRecorder = new MediaRecorder(mediaStream, options);
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(mediaStream);
+      }
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+        const videoUrl = URL.createObjectURL(blob);
+
+        const mins = String(Math.floor(recordSeconds / 60)).padStart(2, '0');
+        const secs = String(recordSeconds % 60).padStart(2, '0');
+        const durationStr = `${mins}:${secs}`;
+
+        const newMedia = { id: Date.now(), type: 'video', url: videoUrl, blob: blob, duration: durationStr };
+        captures.push(newMedia);
+
+        window.parent.postMessage({ type: 'photobooth-capture', media: {
+          id: newMedia.id, type: 'video', url: videoUrl,
+          name: 'Photo_Booth_' + newMedia.id + '.mp4',
+          date: new Date().toISOString().split('T')[0],
+          size: Math.round(blob.size / (1024*1024) * 10) / 10 + ' MB',
+          duration: durationStr
+        }}, '*');
+
+        renderFilmstrip();
+        triggerAutoPreview(newMedia);
+      };
+
+      mediaRecorder.start();
+      isRecording = true;
+      recordingBadge.classList.remove('hidden');
+      shutterIcon.className = 'fa-solid fa-stop text-white text-lg sm:text-xl mac-transition';
+
+      recordSeconds = 0;
+      recordingTimer.innerText = '00:00';
+      recordInterval = setInterval(() => {
+        recordSeconds++;
+        const mins = String(Math.floor(recordSeconds / 60)).padStart(2, '0');
+        const secs = String(recordSeconds % 60).padStart(2, '0');
+        recordingTimer.innerText = `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    function stopRecording() {
+      mediaRecorder.stop();
+      isRecording = false;
+      recordingBadge.classList.add('hidden');
+      shutterIcon.className = 'fa-solid fa-video text-white text-lg sm:text-xl mac-transition';
+      clearInterval(recordInterval);
+    }
+
+    function startCountdown(sec, callback) {
+      closeAllInterfacePanels();
+
+      countdownNumbersContainer.innerHTML = '';
+      for (let i = sec; i >= 1; i--) {
+        const numSpan = document.createElement('span');
+        numSpan.id = `cd-num-${i}`;
+        numSpan.className = 'opacity-40 mac-transition';
+        numSpan.innerText = i;
+        countdownNumbersContainer.appendChild(numSpan);
+      }
+
+      countdownToolbar.classList.remove('opacity-0', 'pointer-events-none');
+      countdownToolbar.classList.add('opacity-100', 'pointer-events-auto');
+
+      let count = sec;
+      updateCountdownDisplay(count, sec);
+
+      const timer = setInterval(() => {
+        count--;
+        if (count > 0) {
+          updateCountdownDisplay(count, sec);
+        } else {
+          clearInterval(timer);
+          countdownToolbar.classList.remove('opacity-100', 'pointer-events-auto');
+          countdownToolbar.classList.add('opacity-0', 'pointer-events-none');
+          callback();
+        }
+      }, 1000);
+    }
+
+    function updateCountdownDisplay(activeVal, maxVal) {
+      for (let i = maxVal; i >= 1; i--) {
+        const el = document.getElementById(`cd-num-${i}`);
+        if (el) {
+          if (i === activeVal) {
+            el.className = 'text-white scale-125 font-bold mac-transition opacity-100';
+          } else {
+            el.className = 'opacity-40 mac-transition';
+          }
+        }
+      }
+    }
+
+    function triggerFlashAndCapture() {
+      flashOverlay.style.opacity = '1';
+      setTimeout(() => { flashOverlay.style.opacity = '0'; }, 150);
+
+      const videoWidth = webcam.videoWidth || 1920;
+      const videoHeight = webcam.videoHeight || 1080;
+
+      // Canvas 3:2 Ratio
+      const canvas32 = document.createElement('canvas');
+      canvas32.width = 1440;
+      canvas32.height = 960;
+      const ctx32 = canvas32.getContext('2d');
+      ctx32.translate(canvas32.width, 0);
+      ctx32.scale(-1, 1);
+      ctx32.filter = getComputedStyle(webcam).filter;
+
+      const sourceAspect = videoWidth / videoHeight;
+      const targetAspect = 3 / 2;
+      let sx, sy, sWidth, sHeight;
+      if (sourceAspect > targetAspect) {
+        sHeight = videoHeight;
+        sWidth = videoHeight * targetAspect;
+        sx = (videoWidth - sWidth) / 2;
+        sy = 0;
+      } else {
+        sWidth = videoWidth;
+        sHeight = videoWidth / targetAspect;
+        sx = 0;
+        sy = (videoHeight - sHeight) / 2;
+      }
+      ctx32.drawImage(webcam, sx, sy, sWidth, sHeight, 0, 0, canvas32.width, canvas32.height);
+
+      // Canvas 16:9 Full Sensor Ratio
+      const canvas169 = document.createElement('canvas');
+      canvas169.width = videoWidth;
+      canvas169.height = videoHeight;
+      const ctx169 = canvas169.getContext('2d');
+      ctx169.translate(canvas169.width, 0);
+      ctx169.scale(-1, 1);
+      ctx169.filter = getComputedStyle(webcam).filter;
+      ctx169.drawImage(webcam, 0, 0, canvas169.width, canvas169.height);
+
+      const url32 = canvas32.toDataURL('image/png');
+      const url169 = canvas169.toDataURL('image/png');
+
+      const newMedia = { id: Date.now(), type: 'image', url: url32, fullUrl: url169 };
+      captures.push(newMedia);
+
+      window.parent.postMessage({ type: 'photobooth-capture', media: {
+        id: newMedia.id, type: 'image', url: url32,
+        name: 'Photo_Booth_' + newMedia.id + '.png',
+        date: new Date().toISOString().split('T')[0],
+        size: Math.round(url32.length * 0.75 / 1024) + ' KB'
+      }}, '*');
+
+      renderFilmstrip();
+      triggerAutoPreview(newMedia);
+    }
+
+    function triggerAutoPreview(itemData) {
+      openPreviewMode(itemData);
+      if (autoPreviewTimer) clearTimeout(autoPreviewTimer);
+
+      autoPreviewTimer = setTimeout(() => {
+        exitPreviewMode();
+      }, 500);
+    }
+
+    function renderFilmstrip() {
+      filmstrip.innerHTML = '';
+
+      if (captures.length === 0) {
+        filmstripContainer.classList.add('hidden');
+        return;
+      }
+
+      filmstripContainer.classList.remove('hidden');
+
+      captures.forEach(itemData => {
+        const isViewing = activePreviewId === itemData.id;
+        const isSelected = selectedIds.has(itemData.id);
+
+        const item = document.createElement('div');
+        item.id = `media-item-${itemData.id}`;
+        item.className = `media-item relative shrink-0 h-[68px] aspect-[10/7] rounded-[2px] overflow-hidden cursor-pointer bg-zinc-900 ${
+          isViewing || isSelected ? 'ring-2 ring-blue-500 z-10' : ''
+        }`;
+
+        if (itemData.type === 'image') {
+          item.innerHTML = `<img src="${itemData.url}" class="w-full h-full object-cover pointer-events-none mac-transition" />`;
+        } else {
+          item.innerHTML = `
+            <video src="${itemData.url}" class="w-full h-full object-cover pointer-events-none -scale-x-100 mac-transition"></video>
+            <div class="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] font-sans px-1 py-0.5 rounded-[2px] flex items-center gap-1 pointer-events-none leading-none">
+              <i class="fa-solid fa-video text-[8px]"></i>
+              <span>${itemData.duration || '00:00'}</span>
+            </div>
+          `;
+        }
+
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (autoPreviewTimer) clearTimeout(autoPreviewTimer);
+
+          if (e.shiftKey && lastSelectedId !== null) {
+            const currentIndex = captures.findIndex(p => p.id === itemData.id);
+            const lastIndex = captures.findIndex(p => p.id === lastSelectedId);
+
+            const start = Math.min(currentIndex, lastIndex);
+            const end = Math.max(currentIndex, lastIndex);
+
+            selectedIds.clear();
+            for (let i = start; i <= end; i++) {
+              selectedIds.add(captures[i].id);
+            }
+            openPreviewMode(itemData);
+
+          } else if (e.ctrlKey || e.metaKey) {
+            if (selectedIds.has(itemData.id)) {
+              selectedIds.delete(itemData.id);
+              if (activePreviewId === itemData.id) {
+                const remainingIds = Array.from(selectedIds);
+                if (remainingIds.length > 0) {
+                  const nextMedia = captures.find(p => p.id === remainingIds[remainingIds.length - 1]);
+                  openPreviewMode(nextMedia);
+                } else {
+                  exitPreviewMode();
+                }
+              }
+            } else {
+              selectedIds.add(itemData.id);
+              openPreviewMode(itemData);
+            }
+            lastSelectedId = itemData.id;
+
+          } else {
+            closeAllInterfacePanels('preview');
+            selectedIds.clear();
+            selectedIds.add(itemData.id);
+            lastSelectedId = itemData.id;
+            openPreviewMode(itemData);
+          }
+
+          renderFilmstrip();
+        });
+
+        item.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showContextMenu(e, itemData.id);
+        });
+
+        filmstrip.appendChild(item);
+      });
+
+      filmstrip.scrollTo({
+        left: filmstrip.scrollWidth,
+        behavior: 'smooth'
+      });
+    }
+
+    function showContextMenu(e, id) {
+      targetContextMediaId = id;
+
+      const mediaItem = captures.find(p => p.id === id);
+      if (!selectedIds.has(id)) {
+        selectedIds.clear();
+        selectedIds.add(id);
+        lastSelectedId = id;
+        if (mediaItem) openPreviewMode(mediaItem);
+        renderFilmstrip();
+      }
+
+      contextMenu.classList.remove('hidden');
+      contextMenu.classList.remove('hidden-panel');
+      contextMenu.classList.add('show-panel');
+
+      const menuWidth = 224;
+      const menuHeight = 140;
+      let leftPos = e.clientX;
+      let topPos = e.clientY;
+
+      if (leftPos + menuWidth > window.innerWidth) {
+        leftPos = window.innerWidth - menuWidth - 10;
+      }
+      if (topPos + menuHeight > window.innerHeight) {
+        topPos = window.innerHeight - menuHeight - 10;
+      }
+
+      contextMenu.style.left = `${leftPos}px`;
+      contextMenu.style.top = `${topPos}px`;
+    }
+
+    function hideContextMenu() {
+      contextMenu.classList.remove('show-panel');
+      contextMenu.classList.add('hidden-panel');
+      setTimeout(() => {
+        if (contextMenu.classList.contains('hidden-panel')) {
+          contextMenu.classList.add('hidden');
+        }
+      }, 200);
+    }
+
+    function downloadMedia(variant) {
+      const targetIds = selectedIds.size > 0 ? Array.from(selectedIds) : (targetContextMediaId ? [targetContextMediaId] : []);
+      targetIds.forEach(id => {
+        const media = captures.find(p => p.id === id);
+        if (media) {
+          const a = document.createElement('a');
+          if (media.type === 'video') {
+            a.href = media.url;
+            a.download = `photobooth-video-${media.id}.mp4`;
+          } else {
+            a.href = (variant === 'full' && media.fullUrl) ? media.fullUrl : media.url;
+            a.download = `photobooth-photo-${variant}-${media.id}.png`;
+          }
+          a.click();
+        }
+      });
+      hideContextMenu();
+    }
+
+    function deleteSelectedMedia() {
+      if (isDeletingInProcess) return;
+
+      const rawIds = selectedIds.size > 0 ? Array.from(selectedIds) : (targetContextMediaId ? [targetContextMediaId] : []);
+      if (rawIds.length === 0) return;
+
+      const sortedIdsToDelete = captures
+        .filter(media => rawIds.includes(media.id))
+        .map(media => media.id);
+
+      hideContextMenu();
+      isDeletingInProcess = true;
+
+      let nextPreviewItem = null;
+      if (sortedIdsToDelete.includes(activePreviewId)) {
+        const deletingIndices = sortedIdsToDelete.map(id => captures.findIndex(p => p.id === id)).sort((a, b) => a - b);
+        const minIndex = deletingIndices[0];
+
+        const remainingCaptures = captures.filter(p => !sortedIdsToDelete.includes(p.id));
+        if (remainingCaptures.length > 0) {
+          const targetIndex = Math.max(0, minIndex - 1);
+          nextPreviewItem = remainingCaptures[targetIndex] || remainingCaptures[0];
+        }
+      }
+
+      sortedIdsToDelete.forEach((id, index) => {
+        setTimeout(() => {
+          const itemEl = document.getElementById(`media-item-${id}`);
+          if (itemEl) {
+            itemEl.classList.add('deleting');
+          }
+
+          if (index === sortedIdsToDelete.length - 1) {
+            setTimeout(() => {
+              captures = captures.filter(p => !sortedIdsToDelete.includes(p.id));
+              selectedIds.clear();
+              lastSelectedId = null;
+
+              if (nextPreviewItem) {
+                selectedIds.add(nextPreviewItem.id);
+                lastSelectedId = nextPreviewItem.id;
+                openPreviewMode(nextPreviewItem);
+              } else if (sortedIdsToDelete.includes(activePreviewId)) {
+                exitPreviewMode();
+              }
+
+              renderFilmstrip();
+              isDeletingInProcess = false;
+            }, 250);
+          }
+        }, index * 120);
+      });
+    }
+
+    function openPreviewMode(itemData) {
+      isPreviewMode = true;
+      activePreviewId = itemData.id;
+
+      if (itemData.type === 'image') {
+        previewVideo.classList.add('hidden');
+        previewVideo.pause();
+        previewImg.src = itemData.url;
+        previewImg.classList.remove('hidden');
+      } else {
+        previewImg.classList.add('hidden');
+        previewVideo.src = itemData.url;
+        previewVideo.classList.remove('hidden');
+        previewVideo.play();
+      }
+
+      previewContainer.classList.remove('hidden-panel');
+      previewContainer.classList.add('show-panel');
+    }
+
+    function exitPreviewMode() {
+      if (autoPreviewTimer) clearTimeout(autoPreviewTimer);
+      isPreviewMode = false;
+      activePreviewId = null;
+
+      selectedIds.clear();
+      lastSelectedId = null;
+
+      previewContainer.classList.remove('show-panel');
+      previewContainer.classList.add('hidden-panel');
+
+      setTimeout(() => {
+        if (!isPreviewMode) {
+          previewVideo.pause();
+        }
+      }, 250);
+
+      renderFilmstrip();
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (captures.length === 0) return;
+
+      const lastId = Array.from(selectedIds).pop() || activePreviewId;
+      const currentIndex = captures.findIndex(p => p.id === lastId);
+
+      if (e.key === 'ArrowRight') {
+        const nextIndex = (currentIndex + 1) % captures.length;
+        selectedIds.clear();
+        selectedIds.add(captures[nextIndex].id);
+        lastSelectedId = captures[nextIndex].id;
+        openPreviewMode(captures[nextIndex]);
+        renderFilmstrip();
+      } else if (e.key === 'ArrowLeft') {
+        const prevIndex = (currentIndex - 1 + captures.length) % captures.length;
+        selectedIds.clear();
+        selectedIds.add(captures[prevIndex].id);
+        lastSelectedId = captures[prevIndex].id;
+        openPreviewMode(captures[prevIndex]);
+        renderFilmstrip();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelectedMedia();
+      } else if (e.key === 'Escape') {
+        exitPreviewMode();
+        closeAllInterfacePanels();
+      }
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initCamera();
+
+      // Scroll mouse & trackpad
+      const container = document.getElementById('filmstrip-container');
+      const targetFilmstrip = document.getElementById('filmstrip');
+
+      if (container && targetFilmstrip) {
+        container.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+          targetFilmstrip.scrollLeft += delta;
+        }, { passive: false });
+      }
+    });
+  </script>
+</body>
+</html>
