@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import type { WindowId, WindowState, ThemeMode } from '@/types';
 import { createClient } from '@supabase/supabase-js';
+import { Analytics } from '@vercel/analytics/react';
 import MenuBar from '@/components/MenuBar';
 import Dock from '@/components/Dock';
 import Window from '@/components/Window';
@@ -274,6 +275,7 @@ export default function App() {
       })}
 
       <Dock onOpenWindow={openWindow} runningWindows={runningWindows} autoHide={anyFullscreen} />
+      <Analytics />
     </>
   );
 }
