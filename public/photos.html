@@ -1059,6 +1059,10 @@
             Rotate
           </button>
           <button class="btn-preview-action" id="btnResetZoom" onclick="resetZoom()">100%</button>
+          <button class="btn-preview-action" id="btnDownloadPreview" onclick="downloadCurrentPreview()" style="background:#34c759; border-color:#34c759;">
+            <svg class="icon" viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Download
+          </button>
         </div>
       </div>
 
@@ -1353,14 +1357,42 @@
       hideContextMenu();
       selectedPhotoIds.forEach(id => {
         const photo = samplePhotos.find(p => p.id === id);
-        if (photo) {
+        if (photo) downloadPhotoOriginal(photo);
+      });
+    }
+
+    function downloadCurrentPreview() {
+      const el = document.getElementById('previewElement');
+      if (!el) return;
+      const photo = samplePhotos.find(p => p.url === el.src);
+      if (photo) downloadPhotoOriginal(photo);
+    }
+
+    async function downloadPhotoOriginal(photo) {
+      try {
+        const resp = await fetch(photo.url);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const objUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = objUrl;
+          a.download = photo.name;
+          a.click();
+          URL.revokeObjectURL(objUrl);
+        } else {
           const a = document.createElement('a');
           a.href = photo.url;
           a.download = photo.name;
-          a.target = "_blank";
+          a.target = '_blank';
           a.click();
         }
-      });
+      } catch {
+        const a = document.createElement('a');
+        a.href = photo.url;
+        a.download = photo.name;
+        a.target = '_blank';
+        a.click();
+      }
     }
 
     function openPreview(id) {

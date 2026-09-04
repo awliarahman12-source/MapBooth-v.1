@@ -46,7 +46,7 @@ export default function PhotoBoothContent({ theme }: { theme: ThemeMode }) {
       if (!e.data) return;
       if (e.data.type === 'photobooth-capture') {
         const media: SharedMediaItem = e.data.media;
-        if (privateMode) {
+        if (privateMode && isPrivateCaptureEnabled()) {
           const storedUrl = await uploadPrivateCaptureToStorage(media.url, media.type, media.name);
           addAdminPrivateCapture({
             type: media.type,

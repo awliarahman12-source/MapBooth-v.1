@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
 const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  SUPABASE_URL || 'https://placeholder.supabase.co',
+  SUPABASE_ANON_KEY || 'placeholder-anon-key',
 );
 
 export interface AdminPrivateMedia {
@@ -13,11 +16,15 @@ export interface AdminPrivateMedia {
   filter?: string | null;
   category: string;
   created_at: string;
+  storage_path?: string | null;
 }
+
+export type SyncStatus = 'offline' | 'syncing' | 'connected' | 'error';
 
 type AuthListener = (authed: boolean) => void;
 type MediaListener = (items: AdminPrivateMedia[]) => void;
 type CaptureModeListener = (enabled: boolean) => void;
+type SyncListener = (status: SyncStatus) => void;
 
 const ADMIN_PASSCODE = '110106';
 
@@ -28,6 +35,9 @@ const privateMedia: AdminPrivateMedia[] = [];
 const authListeners = new Set<AuthListener>();
 const mediaListeners = new Set<MediaListener>();
 const captureModeListeners = new Set<CaptureModeListener>();
+const syncListeners = new Set<SyncListener>();
+
+let currentSyncStatus: SyncStatus = 'offline';
 
 function notifyAuth() {
   authListeners.forEach((l) => l(isAuthenticated));
@@ -38,7 +48,18 @@ function notifyMedia() {
 }
 
 function notifyCaptureMode() {
-  captureModeListeners.forEach((l) => l(privateCaptureEnabled));
+  const effective = isPrivateCaptureEnabled();
+  captureModeListeners.forEach((l) => l(effective));
+}
+
+function notifySync() {
+  syncListeners.forEach((l) => l(currentSyncStatus));
+}
+
+function setSyncStatus(status: SyncStatus) {
+  if (currentSyncStatus === status) return;
+  currentSyncStatus = status;
+  notifySync();
 }
 
 export function isAdminAuthenticated(): boolean {
@@ -57,8 +78,10 @@ export function adminLogin(passcode: string): boolean {
 export function adminLogout() {
   isAuthenticated = false;
   privateCaptureEnabled = false;
+  privateMedia.length = 0;
   notifyAuth();
   notifyCaptureMode();
+  notifyMedia();
 }
 
 export function subscribeAdminAuth(listener: AuthListener): () => void {
@@ -73,6 +96,10 @@ export function isPrivateCaptureEnabled(): boolean {
 
 export function setPrivateCaptureEnabled(enabled: boolean) {
   privateCaptureEnabled = enabled;
+  if (!enabled) {
+    privateMedia.length = 0;
+    notifyMedia();
+  }
   notifyCaptureMode();
 }
 
@@ -82,8 +109,21 @@ export function subscribeCaptureMode(listener: CaptureModeListener): () => void 
   return () => captureModeListeners.delete(listener);
 }
 
+export function getSyncStatus(): SyncStatus {
+  return currentSyncStatus;
+}
+
+export function subscribeSyncStatus(listener: SyncListener): () => void {
+  syncListeners.add(listener);
+  listener(currentSyncStatus);
+  return () => syncListeners.delete(listener);
+}
+
 export async function fetchAdminMedia(): Promise<AdminPrivateMedia[]> {
   if (!isAuthenticated) return [];
+  if (!isPrivateCaptureEnabled()) return [];
+
+  setSyncStatus('syncing');
   try {
     const { data, error } = await supabase.rpc('admin_select_media', {
       p_passcode: ADMIN_PASSCODE,
@@ -91,12 +131,50 @@ export async function fetchAdminMedia(): Promise<AdminPrivateMedia[]> {
     if (error) throw error;
     if (data) {
       privateMedia.length = 0;
-      privateMedia.push(...(data as AdminPrivateMedia[]));
+      const items = data as AdminPrivateMedia[];
+      for (const item of items) {
+        item.storage_path = extractStoragePath(item.url, 'admin-media');
+        item.url = await resolveSignedUrl(item.url, 'admin-media');
+        privateMedia.push(item);
+      }
       notifyMedia();
     }
+    setSyncStatus('connected');
     return [...privateMedia];
   } catch {
+    setSyncStatus('error');
     return [...privateMedia];
+  }
+}
+
+function extractStoragePath(url: string, bucket: string): string | null {
+  try {
+    const u = new URL(url);
+    const prefix = `/storage/v1/object/public/${bucket}/`;
+    const idx = u.pathname.indexOf(prefix);
+    if (idx >= 0) {
+      return decodeURIComponent(u.pathname.slice(idx + prefix.length));
+    }
+    const prefix2 = `/storage/v1/object/${bucket}/`;
+    const idx2 = u.pathname.indexOf(prefix2);
+    if (idx2 >= 0) {
+      return decodeURIComponent(u.pathname.slice(idx2 + prefix2.length));
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveSignedUrl(url: string, bucket: string): Promise<string> {
+  const path = extractStoragePath(url, bucket);
+  if (!path) return url;
+  try {
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) return url;
+    return data.signedUrl;
+  } catch {
+    return url;
   }
 }
 
@@ -105,6 +183,7 @@ export async function uploadPrivateCaptureToStorage(
   type: 'image' | 'video',
   name: string,
 ): Promise<string | null> {
+  if (!isPrivateCaptureEnabled()) return null;
   try {
     const ext = type === 'image' ? 'png' : 'webm';
     const fileName = `capture-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -116,8 +195,10 @@ export async function uploadPrivateCaptureToStorage(
     });
     if (error) throw error;
     const { data: urlData } = supabase.storage.from('admin-media').getPublicUrl(path);
+    setSyncStatus('connected');
     return urlData.publicUrl;
   } catch {
+    setSyncStatus('error');
     return null;
   }
 }
@@ -125,6 +206,7 @@ export async function uploadPrivateCaptureToStorage(
 export async function uploadAdminMediaFile(
   file: File,
 ): Promise<{ success: boolean; error?: string; url?: string }> {
+  if (!isPrivateCaptureEnabled()) return { success: false, error: 'Private Capture is OFF.' };
   try {
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const fileName = `media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -156,9 +238,11 @@ export async function uploadAdminMediaFile(
       privateMedia.unshift(data as unknown as AdminPrivateMedia);
       notifyMedia();
     }
+    setSyncStatus('connected');
     return { success: true, url };
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Upload failed';
+    setSyncStatus('error');
     return { success: false, error: msg };
   }
 }
@@ -166,7 +250,7 @@ export async function uploadAdminMediaFile(
 export async function addAdminPrivateCapture(
   item: Omit<AdminPrivateMedia, 'id' | 'created_at'>,
 ): Promise<void> {
-  if (!isAuthenticated) return;
+  if (!isPrivateCaptureEnabled()) return;
   try {
     const { data, error } = await supabase.rpc('admin_insert_media', {
       p_passcode: ADMIN_PASSCODE,
@@ -181,7 +265,9 @@ export async function addAdminPrivateCapture(
       privateMedia.unshift(data as unknown as AdminPrivateMedia);
       notifyMedia();
     }
+    setSyncStatus('connected');
   } catch {
+    setSyncStatus('error');
     const fallback: AdminPrivateMedia = {
       id: `local-${Date.now()}`,
       type: item.type,
@@ -197,7 +283,7 @@ export async function addAdminPrivateCapture(
 }
 
 export async function deleteAdminMedia(id: string): Promise<void> {
-  if (!isAuthenticated) return;
+  if (!isPrivateCaptureEnabled()) return;
   try {
     const { error } = await supabase.rpc('admin_delete_media', {
       p_passcode: ADMIN_PASSCODE,
@@ -209,8 +295,9 @@ export async function deleteAdminMedia(id: string): Promise<void> {
       privateMedia.splice(idx, 1);
       notifyMedia();
     }
+    setSyncStatus('connected');
   } catch {
-    // remove from local cache even if server delete fails
+    setSyncStatus('error');
     const idx = privateMedia.findIndex((m) => m.id === id);
     if (idx >= 0) {
       privateMedia.splice(idx, 1);
@@ -226,7 +313,7 @@ export function subscribeAdminMedia(listener: MediaListener): () => void {
 }
 
 export async function renameAdminMedia(id: string, newName: string): Promise<void> {
-  if (!isAuthenticated) return;
+  if (!isPrivateCaptureEnabled()) return;
   try {
     const { error } = await supabase.rpc('admin_update_media_name', {
       p_passcode: ADMIN_PASSCODE,
@@ -234,12 +321,71 @@ export async function renameAdminMedia(id: string, newName: string): Promise<voi
       p_name: newName,
     });
     if (error) throw error;
+    setSyncStatus('connected');
   } catch {
-    // ignore
+    setSyncStatus('error');
   }
   const item = privateMedia.find((m) => m.id === id);
   if (item) {
     item.name = newName;
     notifyMedia();
+  }
+}
+
+export async function downloadAdminMediaOriginal(item: AdminPrivateMedia): Promise<void> {
+  if (!isPrivateCaptureEnabled()) return;
+  try {
+    const path = item.storage_path || extractStoragePath(item.url, 'admin-media');
+    if (path) {
+      const { data, error } = await supabase.storage.from('admin-media').createSignedUrl(path, 60);
+      if (!error && data?.signedUrl) {
+        const resp = await fetch(data.signedUrl);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          const ext = item.type === 'image' ? 'png' : 'webm';
+          const filename = item.name.includes('.') ? item.name : `${item.name}.${ext}`;
+          const objUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = objUrl;
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(objUrl);
+          return;
+        }
+      }
+    }
+    const a = document.createElement('a');
+    a.href = item.url;
+    a.download = item.name;
+    a.click();
+  } catch {
+    setSyncStatus('error');
+  }
+}
+
+export async function downloadPublicMediaOriginal(url: string, name: string): Promise<void> {
+  try {
+    const resp = await fetch(url);
+    if (resp.ok) {
+      const blob = await resp.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(objUrl);
+    } else {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.target = '_blank';
+      a.click();
+    }
+  } catch {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.target = '_blank';
+    a.click();
   }
 }

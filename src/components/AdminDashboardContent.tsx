@@ -44,6 +44,13 @@ import {
   deleteAdminMedia,
   renameAdminMedia,
   uploadAdminMediaFile,
+  downloadAdminMediaOriginal,
+  downloadPublicMediaOriginal,
+  isPrivateCaptureEnabled,
+  getSyncStatus,
+  subscribeSyncStatus,
+  type SyncStatus,
+  type AdminPrivateMedia,
 } from '@/adminStore';
 import {
   fetchFilters,
@@ -577,16 +584,33 @@ function FilterManager() {
 }
 
 function PrivateCaptureLibrary() {
-  const [items, setItems] = useState<import('@/adminStore').AdminPrivateMedia[]>([]);
+  const [items, setItems] = useState<AdminPrivateMedia[]>([]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'image' | 'video'>('all');
   const [sortMode, setSortMode] = useState<'newest' | 'oldest'>('newest');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [enabled, setEnabled] = useState(isPrivateCaptureEnabled());
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(getSyncStatus());
+  const [previewItem, setPreviewItem] = useState<AdminPrivateMedia | null>(null);
 
   useEffect(() => {
+    const unsubCapture = subscribeCaptureMode(setEnabled);
+    return unsubCapture;
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) {
+      setItems([]);
+      return;
+    }
     fetchAdminMedia();
     const unsub = subscribeAdminMedia(setItems);
+    return unsub;
+  }, [enabled]);
+
+  useEffect(() => {
+    const unsub = subscribeSyncStatus(setSyncStatus);
     return unsub;
   }, []);
 
@@ -618,15 +642,60 @@ function PrivateCaptureLibrary() {
     setRenamingId(null);
   };
 
-  const handleDownload = (item: import('@/adminStore').AdminPrivateMedia) => {
-    const a = document.createElement('a');
-    a.href = item.url;
-    a.download = item.name;
-    a.click();
+  const handleDownload = (item: AdminPrivateMedia) => {
+    downloadAdminMediaOriginal(item);
   };
+
+  const syncLabel: Record<SyncStatus, string> = {
+    offline: 'Offline',
+    syncing: 'Syncing...',
+    connected: 'Connected',
+    error: 'Sync Error',
+  };
+  const syncColor: Record<SyncStatus, string> = {
+    offline: '#8E8E93',
+    syncing: '#FF9500',
+    connected: '#34C759',
+    error: '#FF3B30',
+  };
+
+  if (!enabled) {
+    return (
+      <SettingsSection title="Admin Private Captures">
+        <div className="admin-empty-state">
+          <Shield size={32} color="#8E8E93" />
+          <p>Private Capture is OFF. No private media is accessible.</p>
+          <p style={{ fontSize: 11, marginTop: 8 }}>Enable Private Capture in Booth Settings to access private photos and videos.</p>
+        </div>
+      </SettingsSection>
+    );
+  }
 
   return (
     <SettingsSection title="Admin Private Captures">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 12,
+            color: syncColor[syncStatus],
+            background: `${syncColor[syncStatus]}15`,
+            padding: '4px 10px',
+            borderRadius: 12,
+          }}
+        >
+          <span style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: syncColor[syncStatus],
+            display: 'inline-block',
+          }} />
+          Sync: {syncLabel[syncStatus]}
+        </span>
+      </div>
       <div className="admin-library-toolbar">
         <div className="admin-search-box">
           <Search size={14} color="#8E8E93" />
@@ -674,7 +743,7 @@ function PrivateCaptureLibrary() {
                   </>
                 )}
                 <div className="admin-library-actions">
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="admin-icon-btn" title="Preview"><Eye size={13} /></a>
+                  <button className="admin-icon-btn" onClick={() => setPreviewItem(item)} title="Preview"><Eye size={13} /></button>
                   <button className="admin-icon-btn" onClick={() => handleDownload(item)} title="Download"><Download size={13} /></button>
                   <button className="admin-icon-btn" onClick={() => startRename(item.id, item.name)} title="Rename"><Edit2 size={13} /></button>
                   <button className="admin-icon-btn danger" onClick={() => handleDelete(item.id)} title="Delete"><Trash2 size={13} /></button>
@@ -684,6 +753,7 @@ function PrivateCaptureLibrary() {
           ))}
         </div>
       )}
+      <MediaPreviewModal item={previewItem} onClose={() => setPreviewItem(null)} onDownload={handleDownload} />
     </SettingsSection>
   );
 }
@@ -1030,6 +1100,7 @@ function MediaTab() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1171,6 +1242,17 @@ function MediaTab() {
     setRenamingId(null);
   };
 
+  const handleMediaDownload = (item: MediaItem) => {
+    if (item.source === 'admin_private' && item.id.startsWith('admin-')) {
+      const adminItem = adminMedia.find((m) => m.id === item.id.slice(6));
+      if (adminItem) {
+        downloadAdminMediaOriginal(adminItem);
+        return;
+      }
+    }
+    downloadPublicMediaOriginal(item.url, item.name);
+  };
+
   const categories = [
     { id: 'all', label: 'All' },
     { id: 'photos', label: 'Photos' },
@@ -1278,7 +1360,8 @@ function MediaTab() {
                   </div>
                   <div className="admin-media-date-cell">{new Date(item.created_at).toLocaleDateString()}</div>
                   <div className="admin-media-actions-cell">
-                    {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" className="admin-icon-btn" title="Preview"><Eye size={13} /></a>}
+                    {item.url && <button className="admin-icon-btn" onClick={() => setPreviewItem(item)} title="Preview"><Eye size={13} /></button>}
+                    {item.url && <button className="admin-icon-btn" onClick={() => handleMediaDownload(item)} title="Download"><Download size={13} /></button>}
                     {item.source === 'admin_private' && (
                       <button className="admin-icon-btn" onClick={() => startRename(item)} title="Rename"><Edit2 size={13} /></button>
                     )}
@@ -1299,6 +1382,7 @@ function MediaTab() {
           )}
         </SettingsSection>
       </div>
+      <MediaItemPreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />
     </>
   );
 }
@@ -2301,6 +2385,272 @@ function NewsEditForm({
       <div className="admin-action-bar">
         <button className="admin-btn-save" onClick={onSave}>{saveLabel}</button>
         <button className="admin-btn-cancel" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function MediaItemPreviewModal({
+  item,
+  onClose,
+}: {
+  item: MediaItem | null;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (item) {
+      setLoading(true);
+      setError(false);
+    }
+  }, [item]);
+
+  if (!item || !item.url) return null;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(20px)',
+        zIndex: 5000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'rgba(30,30,30,0.9)',
+          borderRadius: 12,
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        }}
+      >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>
+            {item.name}
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'rgba(255,255,255,0.6)',
+              cursor: 'pointer',
+              padding: 4,
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 200,
+          minWidth: 300,
+          maxHeight: '80vh',
+          overflow: 'hidden',
+          position: 'relative',
+        }}>
+          {loading && !error && (
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Loading...</div>
+          )}
+          {error && (
+            <div style={{ color: '#ff3b30', fontSize: 13, textAlign: 'center', padding: 20 }}>
+              Failed to load media.
+            </div>
+          )}
+          {item.type === 'video' ? (
+            <video
+              src={item.url}
+              controls
+              autoPlay
+              onLoadedData={() => setLoading(false)}
+              onError={() => { setError(true); setLoading(false); }}
+              style={{
+                maxWidth: '90vw',
+                maxHeight: '75vh',
+                display: loading || error ? 'none' : 'block',
+              }}
+            />
+          ) : (
+            <img
+              src={item.url}
+              alt={item.name}
+              onLoad={() => setLoading(false)}
+              onError={() => { setError(true); setLoading(false); }}
+              style={{
+                maxWidth: '90vw',
+                maxHeight: '75vh',
+                objectFit: 'contain',
+                display: loading || error ? 'none' : 'block',
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MediaPreviewModal({
+  item,
+  onClose,
+  onDownload,
+}: {
+  item: AdminPrivateMedia | null;
+  onClose: () => void;
+  onDownload: (item: AdminPrivateMedia) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (item) {
+      setLoading(true);
+      setError(false);
+    }
+  }, [item]);
+
+  if (!item) return null;
+
+  const ext = item.type === 'image' ? 'png' : 'webm';
+  const filename = item.name.includes('.') ? item.name : `${item.name}.${ext}`;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(20px)',
+        zIndex: 5000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'rgba(30,30,30,0.9)',
+          borderRadius: 12,
+          maxWidth: '90vw',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+        }}
+      >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>
+            {item.name}
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => onDownload(item)}
+              style={{
+                background: 'rgba(0,122,255,0.2)',
+                border: '1px solid rgba(0,122,255,0.4)',
+                color: '#0a84ff',
+                borderRadius: 6,
+                padding: '4px 12px',
+                fontSize: 12,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Download size={13} /> Download
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255,255,255,0.6)',
+                cursor: 'pointer',
+                padding: 4,
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 200,
+          minWidth: 300,
+          maxHeight: '80vh',
+          overflow: 'hidden',
+          position: 'relative',
+        }}>
+          {loading && !error && (
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Loading...</div>
+          )}
+          {error && (
+            <div style={{ color: '#ff3b30', fontSize: 13, textAlign: 'center', padding: 20 }}>
+              Failed to load media. The file may be unavailable or access was denied.
+            </div>
+          )}
+          {item.type === 'image' ? (
+            <img
+              src={item.url}
+              alt={item.name}
+              onLoad={() => setLoading(false)}
+              onError={() => { setError(true); setLoading(false); }}
+              style={{
+                maxWidth: '90vw',
+                maxHeight: '75vh',
+                objectFit: 'contain',
+                display: loading || error ? 'none' : 'block',
+              }}
+            />
+          ) : (
+            <video
+              src={item.url}
+              controls
+              autoPlay
+              onLoadedData={() => setLoading(false)}
+              onError={() => { setError(true); setLoading(false); }}
+              style={{
+                maxWidth: '90vw',
+                maxHeight: '75vh',
+                display: loading || error ? 'none' : 'block',
+              }}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
