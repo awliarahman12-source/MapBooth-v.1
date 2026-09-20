@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>macOS Photo Booth UI</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
   <style>
@@ -143,6 +144,9 @@
       </filter>
       <filter id="svg-hearts" x="-10%" y="-10%" width="120%" height="120%">
         <feColorMatrix type="matrix" values="1 0 0 0 0.15  0 0.9 0 0 0.05  0 0 1 0 0.1  0 0 0 1 0" />
+      </filter>
+      <filter id="svg-love_face" x="-10%" y="-10%" width="120%" height="120%">
+        <feColorMatrix type="matrix" values="1 0 0 0 0.1  0 0.95 0 0 0.02  0 0 1 0 0.1  0 0 0 1 0" />
       </filter>
     </defs>
   </svg>
@@ -565,6 +569,141 @@
       return out;
     }
 
+    // ============================================================
+    // Face Detection (MediaPipe) untuk Love Face engine
+    // ============================================================
+    let _faceDetector = null;
+    let _pendingFaceResolve = null;
+
+    async function _ensureFaceDetector() {
+      if (_faceDetector) return _faceDetector;
+      if (typeof FaceDetection === 'undefined') {
+        console.warn('MediaPipe FaceDetection belum loaded');
+        return null;
+      }
+      try {
+        _faceDetector = new FaceDetection({
+          locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/' + file
+        });
+        _faceDetector.setOptions({
+          model: 'short',
+          minDetectionConfidence: 0.5
+        });
+        _faceDetector.onResults((results) => {
+          if (!_pendingFaceResolve) return;
+          const resolve = _pendingFaceResolve;
+          _pendingFaceResolve = null;
+          if (results.detections && results.detections.length > 0) {
+            const bbox = results.detections[0].boundingBox;
+            resolve({
+              x: bbox.xCenter - bbox.width / 2,
+              y: bbox.yCenter - bbox.height / 2,
+              w: bbox.width,
+              h: bbox.height
+            });
+          } else {
+            resolve(null);
+          }
+        });
+      } catch (e) {
+        console.warn('Gagal init FaceDetection:', e);
+        return null;
+      }
+      return _faceDetector;
+    }
+
+    async function detectFaceInCanvas(canvas) {
+      const fd = await _ensureFaceDetector();
+      if (!fd) return null;
+      return new Promise((resolve) => {
+        _pendingFaceResolve = resolve;
+        try {
+          fd.send({ image: canvas });
+        } catch (e) {
+          _pendingFaceResolve = null;
+          resolve(null);
+        }
+        setTimeout(() => {
+          if (_pendingFaceResolve) {
+            _pendingFaceResolve = null;
+            resolve(null);
+          }
+        }, 1500);
+      });
+    }
+
+    window.__tahoeDetectFace = detectFaceInCanvas;
+
+    async function applyLoveFaceEngine(src, params) {
+      const count = Math.max(1, Math.round((params && params.count) || 8));
+      const size = Math.max(15, Math.round((params && params.size) || 50));
+      const opacity = (params && params.opacity) || 0.9;
+      const tint = (params && params.tint !== undefined) ? params.tint : 0.1;
+
+      const w = src.width, h = src.height;
+      const out = document.createElement('canvas');
+      out.width = w; out.height = h;
+      const ctx = out.getContext('2d');
+      if (!ctx) return src;
+
+      ctx.drawImage(src, 0, 0);
+
+      if (tint > 0) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fillStyle = 'rgba(255, 105, 180, ' + tint + ')';
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+      }
+
+      let faceRect = null;
+      try {
+        faceRect = await detectFaceInCanvas(src);
+      } catch (e) {
+        console.warn('Face detection failed:', e);
+      }
+
+      let fx, fy, fw, fh;
+      if (faceRect) {
+        fx = faceRect.x; fy = faceRect.y; fw = faceRect.w; fh = faceRect.h;
+      } else {
+        fx = w * 0.25; fy = h * 0.15; fw = w * 0.5; fh = h * 0.5;
+      }
+
+      const headTopY = fy - fh * 0.15;
+      const headCenterX = fx + fw / 2;
+
+      const hearts = ['❤️', '💕', '💖', '💗', '💘', '💝', '🩷'];
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const scale = Math.min(w, h) / 500;
+      const arcRadius = fw * 0.75;
+
+      for (let i = 0; i < count; i++) {
+        const angle = Math.PI + ((i + 0.5) / count) * Math.PI;
+        const ringR = arcRadius * (0.7 + Math.random() * 0.5);
+        const hx = headCenterX + Math.cos(angle) * ringR;
+        const hy = headTopY + Math.sin(angle) * ringR * 0.45 - fh * 0.05;
+
+        const fontSize = size * scale * (0.6 + Math.random() * 0.5);
+        const rotation = (Math.random() - 0.5) * 0.8;
+        const heart = hearts[Math.floor(Math.random() * hearts.length)];
+
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(rotation);
+        ctx.font = fontSize + 'px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+        ctx.fillText(heart, 0, 0);
+        ctx.restore();
+      }
+      ctx.restore();
+
+      return out;
+    }
+
     const CANVAS_ENGINES = {
       swirl: applySwirlEngine,
       twirl: applyTwirlEngine,
@@ -572,12 +711,13 @@
       fisheye: applyFisheyeEngine,
       wave: applyWaveEngine,
       hearts: applyHeartsEngine,
+      love_face: applyLoveFaceEngine,
     };
 
-    function applyCanvasEngine(canvas, engineName, params) {
+    async function applyCanvasEngine(canvas, engineName, params) {
       const fn = CANVAS_ENGINES[engineName];
       if (!fn) return canvas;
-      return fn(canvas, params || {});
+      return await fn(canvas, params || {});
     }
 
     const webcam = document.getElementById('webcam');
@@ -982,7 +1122,7 @@
       }
     }
 
-    function triggerFlashAndCapture() {
+    async function triggerFlashAndCapture() {
       flashOverlay.style.opacity = '1';
       setTimeout(() => { flashOverlay.style.opacity = '0'; }, 150);
 
@@ -1031,8 +1171,8 @@
 
       if (isCanvasFilter) {
         try {
-          finalCanvas32 = applyCanvasEngine(canvas32, currentActiveFilter.engine, currentActiveFilter.params || {});
-          finalCanvas169 = applyCanvasEngine(canvas169, currentActiveFilter.engine, currentActiveFilter.params || {});
+          finalCanvas32 = await applyCanvasEngine(canvas32, currentActiveFilter.engine, currentActiveFilter.params || {});
+          finalCanvas169 = await applyCanvasEngine(canvas169, currentActiveFilter.engine, currentActiveFilter.params || {});
         } catch (err) {
           console.error('Canvas engine error:', err);
           finalCanvas32 = canvas32;

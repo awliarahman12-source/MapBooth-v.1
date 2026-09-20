@@ -2,7 +2,7 @@
  * Filter Engines
  */
 
-export type EngineName = 'swirl' | 'twirl' | 'pixelate' | 'fisheye' | 'wave' | 'hearts';
+export type EngineName = 'swirl' | 'twirl' | 'pixelate' | 'fisheye' | 'wave' | 'hearts' | 'love_face';
 
 export interface EngineParam {
   key: string;
@@ -18,7 +18,7 @@ export interface Engine {
   label: string;
   description: string;
   params: EngineParam[];
-  apply: (canvas: HTMLCanvasElement, params: Record<string, number>) => HTMLCanvasElement;
+  apply: (canvas: HTMLCanvasElement, params: Record<string, number>) => HTMLCanvasElement | Promise<HTMLCanvasElement>;
 }
 
 function cloneCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
@@ -34,8 +34,7 @@ function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v;
 }
 
-// ---------- SWIRL ----------
-function applySwirl(src: HTMLCanvasElement, params: Record<string, number>): HTMLCanvasElement {
+function applySwirl(src, params) {
   const strength = params.strength ?? 1.5;
   const radius = params.radius ?? 0.9;
   const w = src.width, h = src.height;
@@ -71,8 +70,7 @@ function applySwirl(src: HTMLCanvasElement, params: Record<string, number>): HTM
   return out;
 }
 
-// ---------- TWIRL ----------
-function applyTwirl(src: HTMLCanvasElement, params: Record<string, number>): HTMLCanvasElement {
+function applyTwirl(src, params) {
   const strength = params.strength ?? 1.0;
   const radius = params.radius ?? 1.0;
   const w = src.width, h = src.height;
@@ -108,8 +106,7 @@ function applyTwirl(src: HTMLCanvasElement, params: Record<string, number>): HTM
   return out;
 }
 
-// ---------- PIXELATE ----------
-function applyPixelate(src: HTMLCanvasElement, params: Record<string, number>): HTMLCanvasElement {
+function applyPixelate(src, params) {
   const size = Math.max(2, Math.round(params.size ?? 12));
   const w = src.width, h = src.height;
   const srcCtx = src.getContext('2d');
@@ -140,8 +137,7 @@ function applyPixelate(src: HTMLCanvasElement, params: Record<string, number>): 
   return out;
 }
 
-// ---------- FISHEYE ----------
-function applyFisheye(src: HTMLCanvasElement, params: Record<string, number>): HTMLCanvasElement {
+function applyFisheye(src, params) {
   const strength = params.strength ?? 0.5;
   const w = src.width, h = src.height;
   const srcCtx = src.getContext('2d');
@@ -172,8 +168,7 @@ function applyFisheye(src: HTMLCanvasElement, params: Record<string, number>): H
   return out;
 }
 
-// ---------- WAVE ----------
-function applyWave(src: HTMLCanvasElement, params: Record<string, number>): HTMLCanvasElement {
+function applyWave(src, params) {
   const amplitude = params.amplitude ?? 12;
   const frequency = params.frequency ?? 0.05;
   const w = src.width, h = src.height;
@@ -199,12 +194,56 @@ function applyWave(src: HTMLCanvasElement, params: Record<string, number>): HTML
   return out;
 }
 
-// ---------- HEARTS ----------
-function applyHearts(src: HTMLCanvasElement, params: Record<string, number>): HTMLCanvasElement {
+function applyHearts(src, params) {
   const count = Math.max(1, Math.round(params.count ?? 15));
   const size = Math.max(8, Math.round(params.size ?? 40));
   const opacity = params.opacity ?? 0.85;
   const tint = params.tint ?? 0.15;
+  const w = src.width, h = src.height;
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  if (!ctx) return src;
+  ctx.drawImage(src, 0, 0);
+  if (tint > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = `rgba(255, 105, 180, ${tint})`;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+  const hearts = ['❤️', '💕', '💖', '💗', '💘', '💝', '🩷', '❤️', '💕'];
+  ctx.save();
+  ctx.globalAlpha = opacity;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const scale = Math.min(w, h) / 500;
+  for (let i = 0; i < count; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const fontSize = size * scale * (0.5 + Math.random() * 0.8);
+    const rotation = (Math.random() - 0.5) * 0.6;
+    const heart = hearts[Math.floor(Math.random() * hearts.length)];
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+    ctx.font = `${fontSize}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    ctx.fillText(heart, 0, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+  return out;
+}
+
+// ---------- LOVE FACE (dengan deteksi wajah) ----------
+// Menggunakan global `detectFaceInElement` yang di-set dari photobooth.html.
+// Kalau tidak tersedia, fallback ke posisi tengah-atas frame.
+
+async function applyLoveFace(src, params) {
+  const count = Math.max(1, Math.round(params.count ?? 8));
+  const size = Math.max(15, Math.round(params.size ?? 50));
+  const opacity = params.opacity ?? 0.9;
+  const tint = params.tint ?? 0.1;
 
   const w = src.width, h = src.height;
   const out = document.createElement('canvas');
@@ -214,6 +253,7 @@ function applyHearts(src: HTMLCanvasElement, params: Record<string, number>): HT
 
   ctx.drawImage(src, 0, 0);
 
+  // Pink tint
   if (tint > 0) {
     ctx.save();
     ctx.globalCompositeOperation = 'overlay';
@@ -222,22 +262,54 @@ function applyHearts(src: HTMLCanvasElement, params: Record<string, number>): HT
     ctx.restore();
   }
 
-  const hearts = ['❤️', '💕', '💖', '💗', '💘', '💝', '🩷', '❤️', '💕'];
+  // Face detection (opsional — kalau function tersedia)
+  let faceRect: { x: number; y: number; w: number; h: number } | null = null;
+  const detectFn = (window as any).__tahoeDetectFace;
+  if (typeof detectFn === 'function') {
+    try {
+      faceRect = await detectFn(src);
+    } catch {
+      faceRect = null;
+    }
+  }
+
+  let fx, fy, fw, fh;
+  if (faceRect) {
+    fx = faceRect.x;
+    fy = faceRect.y;
+    fw = faceRect.w;
+    fh = faceRect.h;
+  } else {
+    fx = w * 0.25;
+    fy = h * 0.15;
+    fw = w * 0.5;
+    fh = h * 0.5;
+  }
+
+  const headTopY = fy - fh * 0.15;
+  const headCenterX = fx + fw / 2;
+
+  const hearts = ['❤️', '💕', '💖', '💗', '💘', '💝', '🩷'];
   ctx.save();
   ctx.globalAlpha = opacity;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
   const scale = Math.min(w, h) / 500;
+  const arcRadius = fw * 0.75;
+
   for (let i = 0; i < count; i++) {
-    const x = Math.random() * w;
-    const y = Math.random() * h;
-    const fontSize = size * scale * (0.5 + Math.random() * 0.8);
-    const rotation = (Math.random() - 0.5) * 0.6;
+    const angle = Math.PI + ((i + 0.5) / count) * Math.PI;
+    const ringR = arcRadius * (0.7 + Math.random() * 0.5);
+    const hx = headCenterX + Math.cos(angle) * ringR;
+    const hy = headTopY + Math.sin(angle) * ringR * 0.45 - fh * 0.05;
+
+    const fontSize = size * scale * (0.6 + Math.random() * 0.5);
+    const rotation = (Math.random() - 0.5) * 0.8;
     const heart = hearts[Math.floor(Math.random() * hearts.length)];
 
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(hx, hy);
     ctx.rotate(rotation);
     ctx.font = `${fontSize}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
     ctx.fillText(heart, 0, 0);
@@ -250,66 +322,36 @@ function applyHearts(src: HTMLCanvasElement, params: Record<string, number>): HT
 
 // ---------- Registry ----------
 export const ENGINES: Record<EngineName, Engine> = {
-  swirl: {
-    name: 'swirl',
-    label: 'Swirl',
-    description: 'Putaran pixel seperti pusaran',
-    params: [
-      { key: 'strength', label: 'Strength', min: 0.1, max: 3, step: 0.1, default: 1.5 },
-      { key: 'radius', label: 'Radius', min: 0.2, max: 1.5, step: 0.05, default: 0.9 },
-    ],
-    apply: applySwirl,
-  },
-  twirl: {
-    name: 'twirl',
-    label: 'Twirl',
-    description: 'Putaran pixel dengan kurva linear',
-    params: [
-      { key: 'strength', label: 'Strength', min: 0.1, max: 2, step: 0.1, default: 1.0 },
-      { key: 'radius', label: 'Radius', min: 0.2, max: 1.5, step: 0.05, default: 1.0 },
-    ],
-    apply: applyTwirl,
-  },
-  pixelate: {
-    name: 'pixelate',
-    label: 'Pixelate',
-    description: 'Efek mosaic kotak-kotak',
-    params: [
-      { key: 'size', label: 'Block Size', min: 2, max: 40, step: 1, default: 12 },
-    ],
-    apply: applyPixelate,
-  },
-  fisheye: {
-    name: 'fisheye',
-    label: 'Fisheye',
-    description: 'Distorsi radial dari tengah',
-    params: [
-      { key: 'strength', label: 'Strength', min: 0.1, max: 2, step: 0.05, default: 0.5 },
-    ],
-    apply: applyFisheye,
-  },
-  wave: {
-    name: 'wave',
-    label: 'Wave',
-    description: 'Distorsi gelombang sinus',
-    params: [
-      { key: 'amplitude', label: 'Amplitude', min: 0, max: 40, step: 1, default: 12 },
-      { key: 'frequency', label: 'Frequency', min: 0.005, max: 0.2, step: 0.005, default: 0.05 },
-    ],
-    apply: applyWave,
-  },
-  hearts: {
-    name: 'hearts',
-    label: 'Hearts (Love)',
-    description: 'Overlay emoji hati + tint pink romantis',
-    params: [
-      { key: 'count', label: 'Jumlah Hati', min: 3, max: 50, step: 1, default: 15 },
-      { key: 'size', label: 'Ukuran', min: 10, max: 100, step: 5, default: 40 },
-      { key: 'opacity', label: 'Opacity', min: 0.2, max: 1, step: 0.05, default: 0.85 },
-      { key: 'tint', label: 'Pink Tint', min: 0, max: 0.6, step: 0.05, default: 0.15 },
-    ],
-    apply: applyHearts,
-  },
+  swirl: { name: 'swirl', label: 'Swirl', description: 'Putaran pixel seperti pusaran', params: [
+    { key: 'strength', label: 'Strength', min: 0.1, max: 3, step: 0.1, default: 1.5 },
+    { key: 'radius', label: 'Radius', min: 0.2, max: 1.5, step: 0.05, default: 0.9 },
+  ], apply: applySwirl },
+  twirl: { name: 'twirl', label: 'Twirl', description: 'Putaran pixel dengan kurva linear', params: [
+    { key: 'strength', label: 'Strength', min: 0.1, max: 2, step: 0.1, default: 1.0 },
+    { key: 'radius', label: 'Radius', min: 0.2, max: 1.5, step: 0.05, default: 1.0 },
+  ], apply: applyTwirl },
+  pixelate: { name: 'pixelate', label: 'Pixelate', description: 'Efek mosaic kotak-kotak', params: [
+    { key: 'size', label: 'Block Size', min: 2, max: 40, step: 1, default: 12 },
+  ], apply: applyPixelate },
+  fisheye: { name: 'fisheye', label: 'Fisheye', description: 'Distorsi radial dari tengah', params: [
+    { key: 'strength', label: 'Strength', min: 0.1, max: 2, step: 0.05, default: 0.5 },
+  ], apply: applyFisheye },
+  wave: { name: 'wave', label: 'Wave', description: 'Distorsi gelombang sinus', params: [
+    { key: 'amplitude', label: 'Amplitude', min: 0, max: 40, step: 1, default: 12 },
+    { key: 'frequency', label: 'Frequency', min: 0.005, max: 0.2, step: 0.005, default: 0.05 },
+  ], apply: applyWave },
+  hearts: { name: 'hearts', label: 'Hearts (Love)', description: 'Overlay emoji hati + tint pink romantis', params: [
+    { key: 'count', label: 'Jumlah Hati', min: 3, max: 50, step: 1, default: 15 },
+    { key: 'size', label: 'Ukuran', min: 10, max: 100, step: 5, default: 40 },
+    { key: 'opacity', label: 'Opacity', min: 0.2, max: 1, step: 0.05, default: 0.85 },
+    { key: 'tint', label: 'Pink Tint', min: 0, max: 0.6, step: 0.05, default: 0.15 },
+  ], apply: applyHearts },
+  love_face: { name: 'love_face', label: 'Love Face (Tracking)', description: 'Hati muncul di atas kepala (deteksi wajah)', params: [
+    { key: 'count', label: 'Jumlah Hati', min: 3, max: 20, step: 1, default: 8 },
+    { key: 'size', label: 'Ukuran', min: 15, max: 100, step: 5, default: 50 },
+    { key: 'opacity', label: 'Opacity', min: 0.3, max: 1, step: 0.05, default: 0.9 },
+    { key: 'tint', label: 'Pink Tint', min: 0, max: 0.5, step: 0.05, default: 0.1 },
+  ], apply: applyLoveFace },
 };
 
 export const ENGINE_LIST: Engine[] = Object.values(ENGINES);
@@ -326,13 +368,13 @@ export function getDefaultParams(engineName: EngineName): Record<string, number>
   return out;
 }
 
-export function applyEngine(
+export async function applyEngine(
   canvas: HTMLCanvasElement,
   engineName: string,
   params: Record<string, number> = {}
-): HTMLCanvasElement {
+): Promise<HTMLCanvasElement> {
   const engine = getEngine(engineName);
   if (!engine) return cloneCanvas(canvas);
   const merged = { ...getDefaultParams(engine.name), ...params };
-  return engine.apply(canvas, merged);
+  return await engine.apply(canvas, merged);
 }
