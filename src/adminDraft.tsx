@@ -1,136 +1,147 @@
-/**
- * Swirl / Twirl filter untuk Photo Booth
- * Efeknya: memutar pixel di sekitar titik tengah gambar.
- * Makin dekat ke pusat, makin kuat putarannya.
- */
+import { useState, useCallback, useRef, useEffect, createContext, useContext, type ReactNode } from 'react';
 
-export interface SwirlOptions {
-  /** Kekuatan putaran. 1.0 = sedang, 2.0 = kuat, 3.0 = ekstrem */
-  strength?: number;
-  /** Radius efek, 0-1 dari setengah sisi terpendek. 1.0 = seluruh gambar */
-  radius?: number;
+interface SectionReg {
+  isDirty: boolean;
+  save: () => Promise<void>;
+  discard: () => void;
 }
 
-const DEFAULTS: Required<SwirlOptions> = {
-  strength: 1.5,
-  radius: 0.9,
-};
+interface DraftContextValue {
+  register: (id: string, reg: SectionReg) => void;
+  unregister: (id: string) => void;
+  saveAll: () => Promise<void>;
+  discardAll: () => void;
+  hasAnyDirty: boolean;
+}
 
-/**
- * Terapkan efek swirl ke sebuah canvas.
- * @param source Canvas sumber (biasanya hasil drawImage dari <video>)
- * @param options Konfigurasi kekuatan & radius
- * @returns Canvas baru dengan efek swirl
- */
-export function applySwirl(
-  source: HTMLCanvasElement,
-  options: SwirlOptions = {}
-): HTMLCanvasElement {
-  const { strength, radius } = { ...DEFAULTS, ...options };
+const DraftContext = createContext<DraftContextValue | null>(null);
 
-  const width = source.width;
-  const height = source.height;
-  const srcCtx = source.getContext('2d');
-  if (!srcCtx) return source;
+export function useDraft(): DraftContextValue {
+  const ctx = useContext(DraftContext);
+  if (!ctx) throw new Error('useDraft must be used within DraftProvider');
+  return ctx;
+}
 
-  const srcData = srcCtx.getImageData(0, 0, width, height);
+export function DraftProvider({ children }: { children: ReactNode }) {
+  const sectionsRef = useRef<Map<string, SectionReg>>(new Map());
+  const [version, setVersion] = useState(0);
+  const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
-  const outCanvas = document.createElement('canvas');
-  outCanvas.width = width;
-  outCanvas.height = height;
-  const outCtx = outCanvas.getContext('2d');
-  if (!outCtx) return source;
+  const register = useCallback((id: string, reg: SectionReg) => {
+    sectionsRef.current.set(id, reg);
+    refresh();
+  }, [refresh]);
 
-  const outData = outCtx.createImageData(width, height);
+  const unregister = useCallback((id: string) => {
+    sectionsRef.current.delete(id);
+    refresh();
+  }, [refresh]);
 
-  const cx = width / 2;
-  const cy = height / 2;
-  const maxR = Math.min(cx, cy) * radius;
+  const hasAnyDirty = Array.from(sectionsRef.current.values()).some((r) => r.isDirty);
 
-  const src = srcData.data;
-  const out = outData.data;
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      let srcX = x;
-      let srcY = y;
-
-      if (dist < maxR) {
-        // Persentase kedekatan ke pusat: 1 di pusat, 0 di tepi radius
-        const percent = (maxR - dist) / maxR;
-        // Kurva kuadratik biar putaran lebih halus di tepi
-        const theta = strength * Math.PI * percent * percent;
-        const cos = Math.cos(theta);
-        const sin = Math.sin(theta);
-
-        srcX = Math.round(cx + dx * cos - dy * sin);
-        srcY = Math.round(cy + dx * sin + dy * cos);
-
-        if (srcX < 0) srcX = 0;
-        else if (srcX >= width) srcX = width - 1;
-        if (srcY < 0) srcY = 0;
-        else if (srcY >= height) srcY = height - 1;
-      }
-
-      const srcIdx = (srcY * width + srcX) * 4;
-      const outIdx = (y * width + x) * 4;
-
-      out[outIdx] = src[srcIdx];
-      out[outIdx + 1] = src[srcIdx + 1];
-      out[outIdx + 2] = src[srcIdx + 2];
-      out[outIdx + 3] = src[srcIdx + 3];
+  const saveAll = useCallback(async () => {
+    for (const reg of sectionsRef.current.values()) {
+      if (reg.isDirty) await reg.save();
     }
-  }
+    refresh();
+  }, [refresh]);
 
-  outCtx.putImageData(outData, 0, 0);
-  return outCanvas;
+  const discardAll = useCallback(() => {
+    for (const reg of sectionsRef.current.values()) {
+      if (reg.isDirty) reg.discard();
+    }
+    refresh();
+  }, [refresh]);
+
+  return (
+    <DraftContext.Provider value={{ register, unregister, saveAll, discardAll, hasAnyDirty }}>
+      {children}
+    </DraftContext.Provider>
+  );
 }
 
-/**
- * Helper: aplikasikan swirl langsung ke data URL.
- * Berguna kalau kamu punya foto dalam bentuk base64.
- */
-export async function applySwirlToDataUrl(
-  dataUrl: string,
-  options: SwirlOptions = {}
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Canvas context unavailable'));
-        return;
-      }
-      ctx.drawImage(img, 0, 0);
-      const result = applySwirl(canvas, options);
-      resolve(result.toDataURL('image/png'));
-    };
-    img.onerror = () => reject(new Error('Failed to load image'));
-    img.src = dataUrl;
-  });
+function useDraftRegistration(
+  id: string,
+  isDirty: boolean,
+  save: () => Promise<void>,
+  discard: () => void,
+) {
+  const { register, unregister } = useDraft();
+  const saveRef = useRef(save);
+  const discardRef = useRef(discard);
+  saveRef.current = save;
+  discardRef.current = discard;
+
+  useEffect(() => {
+    register(id, {
+      isDirty,
+      save: () => saveRef.current(),
+      discard: () => discardRef.current(),
+    });
+    return () => unregister(id);
+  }, [id, isDirty, register, unregister]);
 }
 
-/**
- * Helper: aplikasikan swirl ke elemen <video> yang sedang live.
- * Return canvas dengan hasil swirl, siap di-toDataURL() atau di-upload.
- */
-export function applySwirlToVideo(
-  video: HTMLVideoElement,
-  options: SwirlOptions = {}
-): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth || video.clientWidth;
-  canvas.height = video.videoHeight || video.clientHeight;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return canvas;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return applySwirl(canvas, options);
+export interface DraftState<T> {
+  draft: T;
+  isDirty: boolean;
+  isSaving: boolean;
+  error: string | null;
+  setDraft: (updates: Partial<T>) => void;
+  save: () => Promise<void>;
+  discard: () => void;
+}
+
+export function useDraftState<T>(
+  sectionId: string,
+  externalValue: T,
+  persister: (data: T) => Promise<void>,
+): DraftState<T> {
+  const [draft, setDraftState] = useState<T>(externalValue);
+  const [saved, setSaved] = useState<T>(externalValue);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const firstSync = useRef(true);
+
+  useEffect(() => {
+    if (firstSync.current) {
+      firstSync.current = false;
+      setDraftState(externalValue);
+      setSaved(externalValue);
+      return;
+    }
+    setSaved((prev) => {
+      if (JSON.stringify(prev) === JSON.stringify(externalValue)) return prev;
+      setDraftState(externalValue);
+      return externalValue;
+    });
+  }, [externalValue]);
+
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(saved);
+
+  const setDraft = useCallback((updates: Partial<T>) => {
+    setDraftState((prev) => ({ ...prev, ...updates }));
+  }, []);
+
+  const save = useCallback(async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await persister(draft);
+      setSaved(draft);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [draft, persister]);
+
+  const discard = useCallback(() => {
+    setDraftState(saved);
+    setError(null);
+  }, [saved]);
+
+  useDraftRegistration(sectionId, isDirty, save, discard);
+
+  return { draft, isDirty, isSaving, error, setDraft, save, discard };
 }
