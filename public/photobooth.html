@@ -123,7 +123,7 @@
 </head>
 <body class="bg-zinc-200 text-slate-800 h-screen overflow-hidden font-sans select-none" onclick="handleGlobalClick(event)">
 
-  <!-- SVG Filter Defs untuk Canvas Engines (Swirl, Twirl, dll) — preview approximation -->
+  <!-- SVG Filter Defs untuk Canvas Engines — preview approximation -->
   <svg width="0" height="0" style="position:absolute;pointer-events:none" aria-hidden="true">
     <defs>
       <filter id="svg-swirl" x="-20%" y="-20%" width="140%" height="140%">
@@ -151,10 +151,10 @@
     </defs>
   </svg>
 
-  <!-- APP CONTAINER (Tahoe provides outer window chrome) -->
+  <!-- APP CONTAINER -->
   <div id="app-container" class="w-full h-full bg-zinc-200 overflow-hidden flex flex-col relative mac-transition" style="border:none;border-radius:0;box-shadow:none;">
 
-    <!-- TOP TOOLBAR (hidden - Tahoe window manager provides chrome) -->
+    <!-- TOP TOOLBAR (hidden) -->
     <div style="display:none" class="bg-gradient-to-b from-zinc-100 to-zinc-200 border-b border-zinc-300 px-4 py-2 flex items-center justify-between shrink-0 z-30">
       <div class="flex items-center gap-2 w-1/3">
         <div class="w-3 h-3 rounded-full bg-rose-500 hover:opacity-80 cursor-pointer border border-rose-600 mac-transition"></div>
@@ -170,29 +170,25 @@
     <!-- MAIN VIEWPORT -->
     <div id="main-viewport" onclick="clearMediaSelection()" class="relative w-full aspect-[3/2] bg-black flex items-center justify-center overflow-hidden cursor-pointer">
 
-      <!-- Live Video Element -->
       <video id="webcam" class="w-full h-full object-cover filter-normal -scale-x-100 mac-transition duration-300" autoplay playsinline muted></video>
 
-      <!-- Video Recording Indicator Overlay -->
       <div id="recording-badge" class="absolute top-4 left-4 bg-red-600/90 text-white px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-2 hidden shadow-md animate-pulse z-20 mac-transition">
         <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
         <span id="recording-timer">00:00</span>
       </div>
 
-      <!-- Preview Overlay -->
       <div id="preview-container" class="absolute inset-0 bg-black z-10 panel-pop hidden-panel flex items-center justify-center">
         <img id="preview-img" src="" class="w-full h-full object-cover hidden mac-transition" />
         <video id="preview-video" src="" controls class="w-full h-full object-cover hidden -scale-x-100 mac-transition"></video>
       </div>
 
-      <!-- Flash Overlay -->
       <div id="flash-overlay" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-150 z-40"></div>
 
       <!-- LIVE EFFECTS PANEL OVERLAY -->
       <div id="effects-panel" class="absolute inset-0 bg-black z-20 overflow-hidden panel-pop hidden-panel">
         <div id="effect-slider" class="effect-slider">
 
-          <!-- PAGE 1 EFFECTS -->
+          <!-- PAGE 1 -->
           <div id="page-1" class="w-1/4 h-full grid grid-cols-3 grid-rows-3 gap-0">
             <button onclick="applyEffect('normal')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
               <video class="effect-preview-video w-full h-full object-cover filter-normal -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
@@ -232,7 +228,7 @@
             </button>
           </div>
 
-          <!-- PAGE 2 EFFECTS -->
+          <!-- PAGE 2 -->
           <div id="page-2" class="w-1/4 h-full grid grid-cols-3 grid-rows-3 gap-0">
             <button onclick="applyEffect('sepia')" class="group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center">
               <video class="effect-preview-video w-full h-full object-cover filter-sepia -scale-x-100 pointer-events-none" autoplay playsinline muted></video>
@@ -281,7 +277,6 @@
 
       <!-- DEFAULT TOOLBAR BAR -->
       <div id="normal-toolbar" class="absolute inset-0 bg-gradient-to-b from-zinc-200 via-zinc-300 to-zinc-300 p-3 flex items-center justify-between z-10 mac-transition">
-        <!-- LEFT MODES & TIMER -->
         <div class="w-1/3 flex items-center gap-3">
           <div class="flex items-center bg-zinc-300/80 p-1 rounded-lg border border-zinc-400/80 shadow-inner">
             <button id="mode-4up" onclick="setCaptureMode('4up')" title="4-Up Mode" class="p-1.5 rounded hover:bg-zinc-400/50 text-zinc-600 mac-transition">
@@ -295,7 +290,6 @@
             </button>
           </div>
 
-          <!-- FIXED SELECT TIMER UI -->
           <div id="timer-wrapper" class="relative flex items-center">
             <div class="flex items-center bg-zinc-300/80 p-1 rounded-lg border border-zinc-400/80 shadow-inner gap-1">
               <button id="btn-timer-toggle" onclick="toggleTimerMenu()" class="px-2.5 py-1 rounded-md text-zinc-800 text-xs font-semibold flex items-center gap-1.5 mac-transition active:scale-95 bg-transparent">
@@ -313,14 +307,12 @@
           </div>
         </div>
 
-        <!-- CENTER: RED SHUTTER BUTTON -->
         <div class="w-1/3 flex justify-center">
           <button id="btn-shutter" onclick="handleShutterClick()" class="group relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-red-600 hover:bg-red-500 active:scale-90 mac-transition shadow-md border-2 border-red-400 hover:shadow-lg hover:shadow-red-500/30">
             <i id="shutter-icon" class="fa-solid fa-camera text-white text-lg sm:text-xl mac-transition"></i>
           </button>
         </div>
 
-        <!-- RIGHT: EFFECTS BUTTON -->
         <div class="w-1/3 flex justify-end">
           <button id="btn-effects-toggle" onclick="toggleEffectsPanel()" class="px-5 py-1.5 rounded-md bg-gradient-to-b from-zinc-100 to-zinc-300 hover:from-white hover:to-zinc-200 text-zinc-700 text-xs sm:text-sm font-medium border border-zinc-400 shadow-sm mac-transition active:scale-95">
             Effects
@@ -391,7 +383,7 @@
 
   <script>
     // ============================================================
-    // Canvas Filter Engines — true pixel manipulation
+    // Canvas Filter Engines
     // ============================================================
     function clampVal(v, min, max) { return v < min ? min : v > max ? max : v; }
 
@@ -632,15 +624,19 @@
           btn.onclick = function() { applyEffect(f.id); };
 
           const isCanvas = f.type === 'canvas' && f.engine;
-          const cssFilter = isCanvas
-            ? `url(#svg-${f.engine})`
-            : `none`;
+
+          let videoAttrs;
+          if (isCanvas) {
+            videoAttrs = 'class="effect-preview-video w-full h-full object-cover -scale-x-100 pointer-events-none" style="filter:url(#svg-' + f.engine + ')"';
+          } else {
+            videoAttrs = 'class="effect-preview-video w-full h-full object-cover filter-' + f.id + ' -scale-x-100 pointer-events-none"';
+          }
 
           const badge = isCanvas
             ? '<span class="absolute top-2 right-2 bg-purple-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold z-10">CANVAS</span>'
             : '';
 
-          btn.innerHTML = '<video class="effect-preview-video w-full h-full object-cover -scale-x-100 pointer-events-none" style="filter:' + cssFilter + '" autoplay playsinline muted></video>'
+          btn.innerHTML = '<video ' + videoAttrs + ' autoplay playsinline muted></video>'
             + badge
             + '<span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">' + f.name + '</span>';
           page.appendChild(btn);
@@ -700,13 +696,9 @@
     async function initCamera() {
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          },
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: true
         });
-
         webcam.srcObject = mediaStream;
         bindStreamToEffectPreviews();
       } catch (err) {
@@ -824,7 +816,6 @@
         exitPreviewMode();
         return;
       }
-
       clearMediaSelection();
 
       if (currentMode === 'video') {
@@ -850,7 +841,6 @@
 
     function capture4UpBurst(shotIndex) {
       if (shotIndex >= 4) return;
-
       const delay = currentCountdownSec === 0 ? 3 : currentCountdownSec;
       startCountdown(delay, () => {
         triggerFlashAndCapture();
@@ -927,7 +917,6 @@
 
     function startCountdown(sec, callback) {
       closeAllInterfacePanels();
-
       countdownNumbersContainer.innerHTML = '';
       for (let i = sec; i >= 1; i--) {
         const numSpan = document.createElement('span');
@@ -1050,7 +1039,6 @@
     function triggerAutoPreview(itemData) {
       openPreviewMode(itemData);
       if (autoPreviewTimer) clearTimeout(autoPreviewTimer);
-
       autoPreviewTimer = setTimeout(() => {
         exitPreviewMode();
       }, 500);
@@ -1095,16 +1083,11 @@
           if (e.shiftKey && lastSelectedId !== null) {
             const currentIndex = captures.findIndex(p => p.id === itemData.id);
             const lastIndex = captures.findIndex(p => p.id === lastSelectedId);
-
             const start = Math.min(currentIndex, lastIndex);
             const end = Math.max(currentIndex, lastIndex);
-
             selectedIds.clear();
-            for (let i = start; i <= end; i++) {
-              selectedIds.add(captures[i].id);
-            }
+            for (let i = start; i <= end; i++) selectedIds.add(captures[i].id);
             openPreviewMode(itemData);
-
           } else if (e.ctrlKey || e.metaKey) {
             if (selectedIds.has(itemData.id)) {
               selectedIds.delete(itemData.id);
@@ -1122,7 +1105,6 @@
               openPreviewMode(itemData);
             }
             lastSelectedId = itemData.id;
-
           } else {
             closeAllInterfacePanels('preview');
             selectedIds.clear();
@@ -1151,7 +1133,6 @@
 
     function showContextMenu(e, id) {
       targetContextMediaId = id;
-
       const mediaItem = captures.find(p => p.id === id);
       if (!selectedIds.has(id)) {
         selectedIds.clear();
@@ -1227,7 +1208,6 @@
       if (sortedIdsToDelete.includes(activePreviewId)) {
         const deletingIndices = sortedIdsToDelete.map(id => captures.findIndex(p => p.id === id)).sort((a, b) => a - b);
         const minIndex = deletingIndices[0];
-
         const remainingCaptures = captures.filter(p => !sortedIdsToDelete.includes(p.id));
         if (remainingCaptures.length > 0) {
           const targetIndex = Math.max(0, minIndex - 1);
@@ -1238,9 +1218,7 @@
       sortedIdsToDelete.forEach((id, index) => {
         setTimeout(() => {
           const itemEl = document.getElementById(`media-item-${id}`);
-          if (itemEl) {
-            itemEl.classList.add('deleting');
-          }
+          if (itemEl) itemEl.classList.add('deleting');
 
           if (index === sortedIdsToDelete.length - 1) {
             setTimeout(() => {
