@@ -31,12 +31,12 @@
 
     /* Custom Clean Filmstrip (Scrollbar Tersembunyi Total) */
     .filmstrip-scroll {
-      scrollbar-width: none; /* Firefox */
-      -ms-overflow-style: none; /* IE & Edge */
+      scrollbar-width: none;
+      -ms-overflow-style: none;
       overscroll-behavior-x: contain;
     }
     .filmstrip-scroll::-webkit-scrollbar {
-      display: none; /* Chrome, Safari, Opera */
+      display: none;
     }
 
     /* macOS Animations */
@@ -74,7 +74,7 @@
     /* SLIDE ANIMATION UNTUK EFFECTS */
     .effect-slider {
       display: flex;
-      width: 400%; /* 4 Halaman */
+      width: 400%;
       height: 100%;
       transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
     }
@@ -122,6 +122,34 @@
   </script>
 </head>
 <body class="bg-zinc-200 text-slate-800 h-screen overflow-hidden font-sans select-none" onclick="handleGlobalClick(event)">
+
+  <!-- SVG Filter Defs untuk Canvas Engines (Swirl, Twirl, dll) — preview approximation -->
+  <svg width="0" height="0" style="position:absolute;pointer-events:none" aria-hidden="true">
+    <defs>
+      <filter id="svg-swirl" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="7" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="45" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <filter id="svg-twirl" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.010 0.015" numOctaves="2" seed="3" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="55" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <filter id="svg-pixelate" x="0%" y="0%" width="100%" height="100%">
+        <feFlood x="0" y="0" width="100%" height="100%" flood-color="black" result="black" />
+        <feComposite in="SourceGraphic" in2="black" operator="in" result="src" />
+        <feMorphology operator="erode" radius="4" in="src" result="eroded" />
+        <feMorphology operator="dilate" radius="4" in="eroded" result="dilated" />
+      </filter>
+      <filter id="svg-fisheye" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.005" numOctaves="2" seed="5" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="35" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <filter id="svg-wave" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence type="turbulence" baseFrequency="0.02 0.05" numOctaves="2" seed="9" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="30" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </defs>
+  </svg>
 
   <!-- APP CONTAINER (Tahoe provides outer window chrome) -->
   <div id="app-container" class="w-full h-full bg-zinc-200 overflow-hidden flex flex-col relative mac-transition" style="border:none;border-radius:0;box-shadow:none;">
@@ -362,6 +390,177 @@
   </div>
 
   <script>
+    // ============================================================
+    // Canvas Filter Engines — true pixel manipulation
+    // ============================================================
+    function clampVal(v, min, max) { return v < min ? min : v > max ? max : v; }
+
+    function applySwirlEngine(src, params) {
+      const strength = (params && params.strength) || 1.5;
+      const radius = (params && params.radius) || 0.9;
+      const w = src.width, h = src.height;
+      const srcCtx = src.getContext('2d');
+      const srcData = srcCtx.getImageData(0, 0, w, h);
+      const out = document.createElement('canvas');
+      out.width = w; out.height = h;
+      const outCtx = out.getContext('2d');
+      const outData = outCtx.createImageData(w, h);
+      const cx = w / 2, cy = h / 2;
+      const maxR = Math.min(cx, cy) * radius;
+      const s = srcData.data, o = outData.data;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const dx = x - cx, dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          let srcX = x, srcY = y;
+          if (dist < maxR) {
+            const percent = (maxR - dist) / maxR;
+            const theta = strength * Math.PI * percent * percent;
+            const cos = Math.cos(theta), sin = Math.sin(theta);
+            srcX = clampVal(Math.round(cx + dx * cos - dy * sin), 0, w - 1);
+            srcY = clampVal(Math.round(cy + dx * sin + dy * cos), 0, h - 1);
+          }
+          const si = (srcY * w + srcX) * 4;
+          const oi = (y * w + x) * 4;
+          o[oi] = s[si]; o[oi+1] = s[si+1]; o[oi+2] = s[si+2]; o[oi+3] = s[si+3];
+        }
+      }
+      outCtx.putImageData(outData, 0, 0);
+      return out;
+    }
+
+    function applyTwirlEngine(src, params) {
+      const strength = (params && params.strength) || 1.0;
+      const radius = (params && params.radius) || 1.0;
+      const w = src.width, h = src.height;
+      const srcCtx = src.getContext('2d');
+      const srcData = srcCtx.getImageData(0, 0, w, h);
+      const out = document.createElement('canvas');
+      out.width = w; out.height = h;
+      const outCtx = out.getContext('2d');
+      const outData = outCtx.createImageData(w, h);
+      const cx = w / 2, cy = h / 2;
+      const maxR = Math.min(cx, cy) * radius;
+      const s = srcData.data, o = outData.data;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const dx = x - cx, dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          let srcX = x, srcY = y;
+          if (dist < maxR) {
+            const percent = (maxR - dist) / maxR;
+            const theta = strength * Math.PI * percent;
+            const cos = Math.cos(theta), sin = Math.sin(theta);
+            srcX = clampVal(Math.round(cx + dx * cos - dy * sin), 0, w - 1);
+            srcY = clampVal(Math.round(cy + dx * sin + dy * cos), 0, h - 1);
+          }
+          const si = (srcY * w + srcX) * 4;
+          const oi = (y * w + x) * 4;
+          o[oi] = s[si]; o[oi+1] = s[si+1]; o[oi+2] = s[si+2]; o[oi+3] = s[si+3];
+        }
+      }
+      outCtx.putImageData(outData, 0, 0);
+      return out;
+    }
+
+    function applyPixelateEngine(src, params) {
+      const size = Math.max(2, Math.round((params && params.size) || 12));
+      const w = src.width, h = src.height;
+      const srcCtx = src.getContext('2d');
+      const srcData = srcCtx.getImageData(0, 0, w, h);
+      const out = document.createElement('canvas');
+      out.width = w; out.height = h;
+      const outCtx = out.getContext('2d');
+      const outData = outCtx.createImageData(w, h);
+      const s = srcData.data, o = outData.data;
+      for (let by = 0; by < h; by += size) {
+        for (let bx = 0; bx < w; bx += size) {
+          let r = 0, g = 0, b = 0, a = 0, count = 0;
+          const maxY = Math.min(by + size, h), maxX = Math.min(bx + size, w);
+          for (let y = by; y < maxY; y++) for (let x = bx; x < maxX; x++) {
+            const i = (y * w + x) * 4;
+            r += s[i]; g += s[i+1]; b += s[i+2]; a += s[i+3]; count++;
+          }
+          r = Math.round(r/count); g = Math.round(g/count); b = Math.round(b/count); a = Math.round(a/count);
+          for (let y = by; y < maxY; y++) for (let x = bx; x < maxX; x++) {
+            const i = (y * w + x) * 4;
+            o[i] = r; o[i+1] = g; o[i+2] = b; o[i+3] = a;
+          }
+        }
+      }
+      outCtx.putImageData(outData, 0, 0);
+      return out;
+    }
+
+    function applyFisheyeEngine(src, params) {
+      const strength = (params && params.strength) || 0.5;
+      const w = src.width, h = src.height;
+      const srcCtx = src.getContext('2d');
+      const srcData = srcCtx.getImageData(0, 0, w, h);
+      const out = document.createElement('canvas');
+      out.width = w; out.height = h;
+      const outCtx = out.getContext('2d');
+      const outData = outCtx.createImageData(w, h);
+      const cx = w / 2, cy = h / 2;
+      const maxR = Math.min(cx, cy);
+      const s = srcData.data, o = outData.data;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const dx = x - cx, dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const norm = dist / maxR;
+          const factor = 1 + strength * norm * norm;
+          const srcX = clampVal(Math.round(cx + dx / factor), 0, w - 1);
+          const srcY = clampVal(Math.round(cy + dy / factor), 0, h - 1);
+          const si = (srcY * w + srcX) * 4;
+          const oi = (y * w + x) * 4;
+          o[oi] = s[si]; o[oi+1] = s[si+1]; o[oi+2] = s[si+2]; o[oi+3] = s[si+3];
+        }
+      }
+      outCtx.putImageData(outData, 0, 0);
+      return out;
+    }
+
+    function applyWaveEngine(src, params) {
+      const amplitude = (params && params.amplitude) || 12;
+      const frequency = (params && params.frequency) || 0.05;
+      const w = src.width, h = src.height;
+      const srcCtx = src.getContext('2d');
+      const srcData = srcCtx.getImageData(0, 0, w, h);
+      const out = document.createElement('canvas');
+      out.width = w; out.height = h;
+      const outCtx = out.getContext('2d');
+      const outData = outCtx.createImageData(w, h);
+      const s = srcData.data, o = outData.data;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const srcX = clampVal(Math.round(x + amplitude * Math.sin(y * frequency)), 0, w - 1);
+          const srcY = clampVal(Math.round(y + amplitude * Math.sin(x * frequency)), 0, h - 1);
+          const si = (srcY * w + srcX) * 4;
+          const oi = (y * w + x) * 4;
+          o[oi] = s[si]; o[oi+1] = s[si+1]; o[oi+2] = s[si+2]; o[oi+3] = s[si+3];
+        }
+      }
+      outCtx.putImageData(outData, 0, 0);
+      return out;
+    }
+
+    const CANVAS_ENGINES = {
+      swirl: applySwirlEngine,
+      twirl: applyTwirlEngine,
+      pixelate: applyPixelateEngine,
+      fisheye: applyFisheyeEngine,
+      wave: applyWaveEngine,
+    };
+
+    function applyCanvasEngine(canvas, engineName, params) {
+      const fn = CANVAS_ENGINES[engineName];
+      if (!fn) return canvas;
+      return fn(canvas, params || {});
+    }
+
+    // ============================================================
+
     const webcam = document.getElementById('webcam');
     const previewContainer = document.getElementById('preview-container');
     const previewImg = document.getElementById('preview-img');
@@ -399,6 +598,7 @@
     let isDeletingInProcess = false;
     let currentEffectPage = 1;
     let dynamicFilters = null;
+    let currentActiveFilter = null;
 
     function injectFilterCSS(cssText) {
       let styleEl = document.getElementById('dynamic-filter-styles');
@@ -430,7 +630,19 @@
           const btn = document.createElement('button');
           btn.className = 'group relative w-full h-full bg-black overflow-hidden border border-zinc-800/80 hover:border-blue-500 mac-transition flex items-center justify-center';
           btn.onclick = function() { applyEffect(f.id); };
-          btn.innerHTML = '<video class="effect-preview-video w-full h-full object-cover filter-' + f.id + ' -scale-x-100 pointer-events-none" autoplay playsinline muted></video><span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">' + f.name + '</span>';
+
+          const isCanvas = f.type === 'canvas' && f.engine;
+          const cssFilter = isCanvas
+            ? `url(#svg-${f.engine})`
+            : `none`;
+
+          const badge = isCanvas
+            ? '<span class="absolute top-2 right-2 bg-purple-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold z-10">CANVAS</span>'
+            : '';
+
+          btn.innerHTML = '<video class="effect-preview-video w-full h-full object-cover -scale-x-100 pointer-events-none" style="filter:' + cssFilter + '" autoplay playsinline muted></video>'
+            + badge
+            + '<span class="absolute bottom-3 text-xs sm:text-sm font-medium text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">' + f.name + '</span>';
           page.appendChild(btn);
         });
         for (let i = pageFilters.length; i < perPage; i++) {
@@ -544,7 +756,17 @@
     }
 
     function applyEffect(filterName) {
-      webcam.className = `w-full h-full object-cover -scale-x-100 mac-transition duration-300 filter-${filterName}`;
+      const filterInfo = (dynamicFilters || []).find(f => f.id === filterName);
+      currentActiveFilter = filterInfo || { id: filterName, type: 'css' };
+
+      if (currentActiveFilter.type === 'canvas' && currentActiveFilter.engine) {
+        webcam.className = `w-full h-full object-cover -scale-x-100 mac-transition duration-300`;
+        webcam.style.filter = `url(#svg-${currentActiveFilter.engine})`;
+      } else {
+        webcam.style.filter = '';
+        webcam.className = `w-full h-full object-cover -scale-x-100 mac-transition duration-300 filter-${filterName}`;
+      }
+
       effectsPanel.classList.remove('show-panel');
       effectsPanel.classList.add('hidden-panel');
       effectsToolbar.classList.remove('opacity-100', 'pointer-events-auto');
@@ -754,14 +976,18 @@
       const videoWidth = webcam.videoWidth || 1920;
       const videoHeight = webcam.videoHeight || 1080;
 
-      // Canvas 3:2 Ratio
+      const isCanvasFilter = currentActiveFilter
+        && currentActiveFilter.type === 'canvas'
+        && currentActiveFilter.engine;
+
+      // ===== Canvas 3:2 =====
       const canvas32 = document.createElement('canvas');
       canvas32.width = 1440;
       canvas32.height = 960;
       const ctx32 = canvas32.getContext('2d');
       ctx32.translate(canvas32.width, 0);
       ctx32.scale(-1, 1);
-      ctx32.filter = getComputedStyle(webcam).filter;
+      if (!isCanvasFilter) ctx32.filter = getComputedStyle(webcam).filter;
 
       const sourceAspect = videoWidth / videoHeight;
       const targetAspect = 3 / 2;
@@ -779,18 +1005,33 @@
       }
       ctx32.drawImage(webcam, sx, sy, sWidth, sHeight, 0, 0, canvas32.width, canvas32.height);
 
-      // Canvas 16:9 Full Sensor Ratio
+      // ===== Canvas 16:9 =====
       const canvas169 = document.createElement('canvas');
       canvas169.width = videoWidth;
       canvas169.height = videoHeight;
       const ctx169 = canvas169.getContext('2d');
       ctx169.translate(canvas169.width, 0);
       ctx169.scale(-1, 1);
-      ctx169.filter = getComputedStyle(webcam).filter;
+      if (!isCanvasFilter) ctx169.filter = getComputedStyle(webcam).filter;
       ctx169.drawImage(webcam, 0, 0, canvas169.width, canvas169.height);
 
-      const url32 = canvas32.toDataURL('image/png');
-      const url169 = canvas169.toDataURL('image/png');
+      // ===== Apply canvas engine kalau filter aktif =====
+      let finalCanvas32 = canvas32;
+      let finalCanvas169 = canvas169;
+
+      if (isCanvasFilter) {
+        try {
+          finalCanvas32 = applyCanvasEngine(canvas32, currentActiveFilter.engine, currentActiveFilter.params || {});
+          finalCanvas169 = applyCanvasEngine(canvas169, currentActiveFilter.engine, currentActiveFilter.params || {});
+        } catch (err) {
+          console.error('Canvas engine error:', err);
+          finalCanvas32 = canvas32;
+          finalCanvas169 = canvas169;
+        }
+      }
+
+      const url32 = finalCanvas32.toDataURL('image/png');
+      const url169 = finalCanvas169.toDataURL('image/png');
 
       const newMedia = { id: Date.now(), type: 'image', url: url32, fullUrl: url169 };
       captures.push(newMedia);
@@ -1094,7 +1335,6 @@
     window.addEventListener('DOMContentLoaded', () => {
       initCamera();
 
-      // Scroll mouse & trackpad
       const container = document.getElementById('filmstrip-container');
       const targetFilmstrip = document.getElementById('filmstrip');
 

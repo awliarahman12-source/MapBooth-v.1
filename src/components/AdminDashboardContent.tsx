@@ -56,10 +56,18 @@ import {
   fetchFilters,
   subscribeFilters,
   addCustomFilter,
+  addCanvasFilter,
   updateFilter as updateFilterFn,
   deleteFilter,
   type AdminFilter,
 } from '@/filterStore';
+import {
+  ENGINE_LIST,
+  getEngine,
+  getDefaultParams,
+  applyEngine,
+  type EngineName,
+} from '@/utils/filterEngines';
 import {
   fetchPublicPhotos,
   fetchPublicAlbums,
@@ -433,11 +441,21 @@ function FilterManager() {
   const [filters, setFilters] = useState<AdminFilter[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
   const [editName, setEditName] = useState('');
   const [editCss, setEditCss] = useState('');
+  const [editEngine, setEditEngine] = useState<string>('swirl');
+  const [editParams, setEditParams] = useState<Record<string, number>>({});
+
+  const [addType, setAddType] = useState<'css' | 'canvas'>('css');
   const [newName, setNewName] = useState('');
   const [newFilterId, setNewFilterId] = useState('');
   const [newCss, setNewCss] = useState('');
+  const [newEngine, setNewEngine] = useState<string>('swirl');
+  const [newParams, setNewParams] = useState<Record<string, number>>(
+    getDefaultParams('swirl')
+  );
+
   const [errorMsg, setErrorMsg] = useState('');
   const [importMode, setImportMode] = useState<'paste' | 'file'>('paste');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -448,21 +466,42 @@ function FilterManager() {
     return unsub;
   }, []);
 
+  const handleNewEngineChange = (engineName: string) => {
+    setNewEngine(engineName);
+    setNewParams(getDefaultParams(engineName as EngineName));
+  };
+
   const handleAdd = async () => {
     setErrorMsg('');
-    if (!newName.trim() || !newFilterId.trim() || !newCss.trim()) {
-      setErrorMsg('All fields are required');
+    if (!newName.trim() || !newFilterId.trim()) {
+      setErrorMsg('Name and ID are required');
       return;
     }
     const id = newFilterId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-    const result = await addCustomFilter(id, newName.trim(), newCss.trim());
-    if (!result.success) {
-      setErrorMsg(result.error || 'Failed to add filter');
-      return;
+
+    if (addType === 'css') {
+      if (!newCss.trim()) {
+        setErrorMsg('CSS value is required');
+        return;
+      }
+      const result = await addCustomFilter(id, newName.trim(), newCss.trim());
+      if (!result.success) {
+        setErrorMsg(result.error || 'Failed to add filter');
+        return;
+      }
+    } else {
+      const result = await addCanvasFilter(id, newName.trim(), newEngine, newParams);
+      if (!result.success) {
+        setErrorMsg(result.error || 'Failed to add canvas filter');
+        return;
+      }
     }
+
     setNewName('');
     setNewFilterId('');
     setNewCss('');
+    setNewEngine('swirl');
+    setNewParams(getDefaultParams('swirl'));
     setShowAdd(false);
   };
 
@@ -488,10 +527,20 @@ function FilterManager() {
     setEditingId(f.id);
     setEditName(f.name);
     setEditCss(f.css);
+    setEditEngine(f.engine ?? 'swirl');
+    setEditParams(f.params ?? getDefaultParams((f.engine ?? 'swirl') as EngineName));
   };
 
-  const saveEdit = async (id: string) => {
-    await updateFilterFn(id, { name: editName, css: editCss });
+  const saveEdit = async (f: AdminFilter) => {
+    if (f.type === 'canvas') {
+      await updateFilterFn(f.id, {
+        name: editName,
+        engine: editEngine,
+        params: editParams,
+      });
+    } else {
+      await updateFilterFn(f.id, { name: editName, css: editCss });
+    }
     setEditingId(null);
   };
 
@@ -505,10 +554,14 @@ function FilterManager() {
     await deleteFilter(f.id);
   };
 
+  const currentEditEngine = getEngine(editEngine);
+
   return (
     <SettingsSection title="Filter Manager">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontSize: 13, color: 'var(--text-sub)' }}>{filters.length} filters — {filters.filter(f => f.enabled).length} enabled</span>
+        <span style={{ fontSize: 13, color: 'var(--text-sub)' }}>
+          {filters.length} filters — {filters.filter((f) => f.enabled).length} enabled
+        </span>
         <button className="admin-add-btn" onClick={() => { setShowAdd(!showAdd); setErrorMsg(''); }}>
           <Plus size={14} /> Add Filter
         </button>
@@ -517,28 +570,100 @@ function FilterManager() {
       {showAdd && (
         <div className="admin-modal-inline">
           <div className="admin-modal-tabs">
-            <button className={importMode === 'paste' ? 'active' : ''} onClick={() => setImportMode('paste')}>Paste CSS</button>
-            <button className={importMode === 'file' ? 'active' : ''} onClick={() => setImportMode('file')}>Upload HTML</button>
+            <button className={addType === 'css' ? 'active' : ''} onClick={() => setAddType('css')}>
+              CSS Filter
+            </button>
+            <button className={addType === 'canvas' ? 'active' : ''} onClick={() => setAddType('canvas')}>
+              Canvas Engine
+            </button>
           </div>
+
           {errorMsg && <div className="admin-error">{errorMsg}</div>}
-          {importMode === 'file' && (
-            <div className="admin-upload-zone" onClick={() => fileInputRef.current?.click()}>
-              <Upload size={20} color="#8E8E93" />
-              <span>Click to choose an HTML file with filter CSS</span>
-              <input ref={fileInputRef} type="file" accept=".html,.htm,.css" style={{ display: 'none' }} onChange={handleFileImport} />
-            </div>
+
+          <input
+            className="admin-input"
+            placeholder="Filter ID (e.g. swirl)"
+            value={newFilterId}
+            onChange={(e) => setNewFilterId(e.target.value)}
+          />
+          <input
+            className="admin-input"
+            placeholder="Display name (e.g. Swirl)"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+
+          {addType === 'css' && (
+            <>
+              {importMode === 'file' && (
+                <div className="admin-upload-zone" onClick={() => fileInputRef.current?.click()}>
+                  <Upload size={20} color="#8E8E93" />
+                  <span>Click to choose an HTML file with filter CSS</span>
+                  <input ref={fileInputRef} type="file" accept=".html,.htm,.css" style={{ display: 'none' }} onChange={handleFileImport} />
+                </div>
+              )}
+              <textarea
+                className="admin-textarea"
+                placeholder="CSS filter value (e.g. sepia(80%) contrast(120%))"
+                value={newCss}
+                onChange={(e) => setNewCss(e.target.value)}
+                rows={3}
+              />
+              {newFilterId && newCss && (
+                <div className="admin-filter-preview-row">
+                  <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>Preview:</span>
+                  <div className="admin-filter-preview-box" style={{ filter: newCss }} />
+                </div>
+              )}
+            </>
           )}
-          <input className="admin-input" placeholder="Filter ID (e.g. vintage)" value={newFilterId} onChange={(e) => setNewFilterId(e.target.value)} />
-          <input className="admin-input" placeholder="Display name (e.g. Vintage)" value={newName} onChange={(e) => setNewName(e.target.value)} />
-          <textarea className="admin-textarea" placeholder="CSS filter value (e.g. sepia(80%) contrast(120%))" value={newCss} onChange={(e) => setNewCss(e.target.value)} rows={3} />
-          {newFilterId && newCss && (
-            <div className="admin-filter-preview-row">
-              <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>Preview:</span>
-              <div className="admin-filter-preview-box" style={{ filter: newCss }} />
-            </div>
+
+          {addType === 'canvas' && (
+            <>
+              <label style={{ fontSize: 12, color: 'var(--text-sub)', marginTop: 4 }}>Engine</label>
+              <select
+                className="admin-select"
+                value={newEngine}
+                onChange={(e) => handleNewEngineChange(e.target.value)}
+              >
+                {ENGINE_LIST.map((eng) => (
+                  <option key={eng.name} value={eng.name}>
+                    {eng.label} — {eng.description}
+                  </option>
+                ))}
+              </select>
+
+              {getEngine(newEngine)?.params.map((p) => (
+                <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                  <span style={{ fontSize: 12, minWidth: 80, color: 'var(--text-sub)' }}>{p.label}</span>
+                  <input
+                    type="range"
+                    min={p.min}
+                    max={p.max}
+                    step={p.step}
+                    value={newParams[p.key] ?? p.default}
+                    onChange={(e) =>
+                      setNewParams({ ...newParams, [p.key]: parseFloat(e.target.value) })
+                    }
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ fontSize: 12, minWidth: 40, textAlign: 'right' }}>
+                    {(newParams[p.key] ?? p.default).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+
+              <div className="admin-filter-preview-row" style={{ marginTop: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>Preview:</span>
+                <CanvasFilterPreview engine={newEngine} params={newParams} size={80} />
+              </div>
+            </>
           )}
+
           <div className="admin-modal-actions">
-            <button className="admin-btn-cancel" onClick={() => { setShowAdd(false); setErrorMsg(''); }}>Cancel</button>
+            <button className="admin-btn-cancel" onClick={() => { setShowAdd(false); setErrorMsg(''); }}>
+              Cancel
+            </button>
             <button className="admin-btn-save" onClick={handleAdd}>Add Filter</button>
           </div>
         </div>
@@ -548,16 +673,63 @@ function FilterManager() {
         {filters.map((f) => (
           <div key={f.id} className={`admin-filter-card ${!f.enabled ? 'disabled' : ''}`}>
             <div className="admin-filter-preview-wrap">
-              <div className={`admin-filter-preview filter-${f.filter_id}`} style={{ filter: f.css === 'none' ? undefined : f.css }} />
+              {f.type === 'canvas' ? (
+                <CanvasFilterPreview engine={f.engine ?? 'swirl'} params={f.params} size={120} />
+              ) : (
+                <div
+                  className={`admin-filter-preview filter-${f.filter_id}`}
+                  style={{ filter: f.css === 'none' ? undefined : f.css }}
+                />
+              )}
               {f.is_builtin && <span className="admin-filter-badge">BUILT-IN</span>}
+              {f.type === 'canvas' && <span className="admin-filter-badge" style={{ left: 'auto', right: 6, background: '#AF52DE' }}>CANVAS</span>}
               {!f.enabled && <span className="admin-filter-badge-off">OFF</span>}
             </div>
+
             {editingId === f.id ? (
               <div className="admin-filter-edit">
                 <input className="admin-input" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                <input className="admin-input" value={editCss} onChange={(e) => setEditCss(e.target.value)} />
+
+                {f.type === 'canvas' ? (
+                  <>
+                    <select
+                      className="admin-select"
+                      value={editEngine}
+                      onChange={(e) => {
+                        setEditEngine(e.target.value);
+                        setEditParams(getDefaultParams(e.target.value as EngineName));
+                      }}
+                    >
+                      {ENGINE_LIST.map((eng) => (
+                        <option key={eng.name} value={eng.name}>{eng.label}</option>
+                      ))}
+                    </select>
+                    {currentEditEngine?.params.map((p) => (
+                      <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <span style={{ fontSize: 11, minWidth: 60 }}>{p.label}</span>
+                        <input
+                          type="range"
+                          min={p.min}
+                          max={p.max}
+                          step={p.step}
+                          value={editParams[p.key] ?? p.default}
+                          onChange={(e) =>
+                            setEditParams({ ...editParams, [p.key]: parseFloat(e.target.value) })
+                          }
+                          style={{ flex: 1 }}
+                        />
+                        <span style={{ fontSize: 11, minWidth: 34, textAlign: 'right' }}>
+                          {(editParams[p.key] ?? p.default).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <input className="admin-input" value={editCss} onChange={(e) => setEditCss(e.target.value)} />
+                )}
+
                 <div className="admin-filter-edit-actions">
-                  <button className="admin-btn-save" onClick={() => saveEdit(f.id)}>Save</button>
+                  <button className="admin-btn-save" onClick={() => saveEdit(f)}>Save</button>
                   <button className="admin-btn-cancel" onClick={() => setEditingId(null)}>Cancel</button>
                 </div>
               </div>
@@ -580,6 +752,72 @@ function FilterManager() {
         ))}
       </div>
     </SettingsSection>
+  );
+}
+
+function CanvasFilterPreview({
+  engine,
+  params,
+  size = 80,
+}: {
+  engine: string;
+  params: Record<string, number>;
+  size?: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const w = size;
+    const h = size;
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const grad = ctx.createLinearGradient(0, 0, w, h);
+    grad.addColorStop(0, '#FF6B6B');
+    grad.addColorStop(0.5, '#FFD93D');
+    grad.addColorStop(1, '#6BCB77');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < w; i += 8) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, h);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(w, i);
+      ctx.stroke();
+    }
+
+    try {
+      const result = applyEngine(canvas, engine, params);
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(result, 0, 0);
+    } catch (err) {
+      console.warn('Preview engine error:', err);
+    }
+  }, [engine, params, size]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      style={{
+        borderRadius: 6,
+        border: '1px solid var(--card-border)',
+        display: 'block',
+      }}
+    />
   );
 }
 
@@ -2039,7 +2277,6 @@ function NewsManagement() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
 
-  // Add/edit form state
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -2531,9 +2768,6 @@ function MediaPreviewModal({
   }, [item]);
 
   if (!item) return null;
-
-  const ext = item.type === 'image' ? 'png' : 'webm';
-  const filename = item.name.includes('.') ? item.name : `${item.name}.${ext}`;
 
   return (
     <div
